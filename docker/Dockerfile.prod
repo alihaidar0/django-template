@@ -1,0 +1,96 @@
+# ============================================================
+#  docker/Dockerfile.prod
+#
+#  Production image — Gunicorn + collected static files.
+#  Built by GitHub Actions on merge to main.
+#  Pushed to: $DOCKERHUB_USERNAME/<repo-name>:latest
+#
+#  Build locally:
+#    docker build -f docker/Dockerfile.prod -t my-project-prod .
+#
+#  Python 3.14 reached GA in October 2025.
+#  The float tag (3.14) always pulls the latest patch release.
+# ============================================================
+
+ARG PYTHON_VERSION=3.14
+FROM python:${PYTHON_VERSION}-slim-bookworm AS base
+
+# ── Environment ────────────────────────────────────────────────────────
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_CACHE_DIR=/root/.cache/uv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_FROZEN=1 \
+    PATH="/root/.local/bin:$PATH"
+
+# ── System dependencies ────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Install uv ────────────────────────────────────────────────────────
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# ── Non-root app user ──────────────────────────────────────────────────
+RUN groupadd --gid 1001 appgroup && \
+    useradd --uid 1001 --gid appgroup --no-create-home appuser
+
+WORKDIR /app
+
+# ── Install Python dependencies ────────────────────────────────────────
+# Layer order is deliberate for maximum Docker cache efficiency:
+#   Layer A — uv.lock:        busted only when dependency versions change
+#   Layer B — pyproject.toml: busted only when metadata/constraints change
+#   Layer C — uv sync:        only re-runs when A or B are cache-busted
+#
+# Flags:
+#   --no-dev              → exclude test/lint tools from the production image
+#   --no-install-project  → install only declared deps, not the local package
+#   --frozen              → FAIL if uv.lock is absent or out of sync
+ARG CACHE_BUST=unknown
+
+# uv.loc[k] glob avoids a BuildKit crash if the file is missing in a fresh repo
+COPY pyproject.toml uv.loc[k] ./
+
+RUN uv sync --no-dev --no-install-project --frozen
+
+# ── Copy source code ───────────────────────────────────────────────────
+COPY . .
+
+# ── Collect static files ───────────────────────────────────────────────
+# Guard: skip gracefully on a fresh template (no manage.py yet).
+RUN if [ -f "manage.py" ]; then \
+        echo "▶  Collecting static files..." && \
+        DJANGO_SETTINGS_MODULE=config.settings.production \
+        SECRET_KEY=placeholder-for-collectstatic-only \
+        DATABASE_URL=sqlite:////tmp/collectstatic.db \
+        uv run python manage.py collectstatic --noinput && \
+        echo "✅ Static files collected"; \
+    else \
+        echo "ℹ️  No manage.py found — skipping collectstatic (fresh template)"; \
+    fi
+
+# ── Production entrypoint ──────────────────────────────────────────────
+COPY scripts/entrypoint.prod.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# ── Ownership ──────────────────────────────────────────────────────────
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+EXPOSE 8080
+
+# workers=2 suits Cloud Run's single-vCPU minimum.
+# Override at runtime via GUNICORN_WORKERS env var if needed.
+CMD ["uv", "run", "gunicorn", \
+     "--bind",           "0.0.0.0:8080", \
+     "--workers",        "2", \
+     "--threads",        "4", \
+     "--timeout",        "120", \
+     "--access-logfile", "-", \
+     "--error-logfile",  "-", \
+     "config.wsgi:application"]

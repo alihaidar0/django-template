@@ -1,0 +1,86 @@
+{
+  "name": "Django Dev Container",
+  "dockerComposeFile": ["../docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+
+  // ── Forwarded ports ──────────────────────────────────────────────────
+  "forwardPorts": [
+    8000,   // Django dev server
+    5432,   // PostgreSQL
+    6379,   // Redis
+    8025,   // Mailpit web UI
+    5555,   // Flower (Celery monitor)
+    5678    // debugpy (VS Code debugger)
+  ],
+
+  "portsAttributes": {
+    "8000": { "label": "Django",   "onAutoForward": "notify" },
+    "8025": { "label": "Mailpit",  "onAutoForward": "silent" },
+    "5555": { "label": "Flower",   "onAutoForward": "silent" },
+    "5678": { "label": "debugpy",  "onAutoForward": "silent" }
+  },
+
+  // ── VS Code extensions ───────────────────────────────────────────────
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "matangover.mypy",
+        // Django
+        "batisteo.vscode-django",
+        // Docker / containers
+        "ms-azuretools.vscode-docker",
+        // Git
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        // Database
+        "cweijan.vscode-postgresql-client2",
+        // REST API testing
+        "humao.rest-client",
+        // Utilities
+        "tamasfe.even-better-toml",
+        "editorconfig.editorconfig",
+        "ms-vscode.makefile-tools"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "[python]": {
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+          },
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.watcherExclude": {
+          "**/.git/objects/**": true,
+          "**/.venv/**": true,
+          "**/__pycache__/**": true,
+          "**/.mypy_cache/**": true,
+          "**/.ruff_cache/**": true,
+          "**/.pytest_cache/**": true
+        }
+      }
+    }
+  },
+
+  // ── Lifecycle hooks ──────────────────────────────────────────────────
+  // postCreateCommand: intentionally omitted — no pyproject.toml on a fresh
+  // template, so there is nothing to install. The developer runs `uv init`
+  // manually as the first step. Pre-commit hooks are installed after
+  // `pyproject.toml` exists and dependencies are in place.
+  //
+  // postStartCommand: shows context-aware getting-started instructions
+  // every time the container starts.
+  "postStartCommand": "bash /workspace/scripts/welcome.sh",
+
+  "remoteUser": "root"
+}

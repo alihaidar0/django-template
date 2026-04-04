@@ -1,0 +1,81 @@
+# ============================================================
+#  .dockerignore
+#  Excludes everything not needed in the production image.
+# ============================================================
+
+# ── Git ────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+.github
+
+# ── Docker ─────────────────────────────────────────────────────────────────
+.dockerignore
+docker-compose*.yml
+docker/
+
+# ── Dev Container ──────────────────────────────────────────────────────────
+.devcontainer
+
+# ── Python cache ───────────────────────────────────────────────────────────
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info
+dist/
+build/
+
+# ── Virtual environments ───────────────────────────────────────────────────
+.venv
+venv/
+env/
+.uv/
+
+# ── Test + coverage ────────────────────────────────────────────────────────
+.pytest_cache
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ── Type checking ──────────────────────────────────────────────────────────
+.mypy_cache
+.ruff_cache/
+
+# ── Secrets ────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# ── Local data ─────────────────────────────────────────────────────────────
+media/
+staticfiles/
+*.sqlite3
+
+# ── OS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Logs ───────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Docs ───────────────────────────────────────────────────────────────────
+docs/
+*.md
+
+# ── Dev tooling ────────────────────────────────────────────────────────────
+.pre-commit-config.yaml
+scripts/entrypoint.dev.sh
+scripts/welcome.sh
+scripts/hooks/

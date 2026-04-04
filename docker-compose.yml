@@ -1,0 +1,153 @@
+name: django-project
+
+services:
+  app:
+    image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
+    container_name: django_app
+    restart: unless-stopped
+    entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
+    command: sleep infinity
+    volumes:
+      - .:/workspace:cached
+      - ${USERPROFILE:-$HOME}/.gitconfig:/root/.gitconfig:ro
+      - ${USERPROFILE:-$HOME}/.ssh:/root/.ssh:cached
+      - uv-cache:/root/.cache/uv
+      - shell-history:/root/.shell_history
+    environment:
+      GIT_SSH_COMMAND: "ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+      DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+    ports:
+      - "8000:8000"
+      - "5678:5678"
+      - "5555:5555"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    working_dir: /workspace
+    networks:
+      - django-network
+
+  db:
+    image: postgres:18-alpine
+    container_name: django_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-django}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-django_pass}
+      POSTGRES_DB:       ${POSTGRES_DB:-django_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-django} -d ${POSTGRES_DB:-django_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - django-network
+
+  redis:
+    image: redis:8-alpine
+    container_name: django_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - django-network
+
+  celery:
+    image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
+    container_name: django_celery
+    restart: unless-stopped
+    entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
+    # Guard: only starts Celery if manage.py exists; otherwise waits silently.
+    command: >
+      sh -c '[ -f /workspace/manage.py ] &&
+             watchfiles "celery -A config worker -l INFO --pool=solo" /workspace ||
+             echo "⏳ No manage.py — Celery worker waiting for Django initialisation"'
+    volumes:
+      - .:/workspace:cached
+      - uv-cache:/root/.cache/uv
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    working_dir: /workspace
+    networks:
+      - django-network
+
+  celery-beat:
+    image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
+    container_name: django_celery_beat
+    restart: unless-stopped
+    entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
+    # Guard: only starts Beat if manage.py exists; otherwise waits silently.
+    command: >
+      sh -c '[ -f /workspace/manage.py ] &&
+             celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler ||
+             echo "⏳ No manage.py — Celery Beat waiting for Django initialisation"'
+    volumes:
+      - .:/workspace:cached
+      - uv-cache:/root/.cache/uv
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    working_dir: /workspace
+    networks:
+      - django-network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: django_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - django-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  uv-cache:
+  shell-history:
+
+networks:
+  django-network:
+    driver: bridge
