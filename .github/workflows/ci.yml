@@ -73,7 +73,7 @@ jobs:
       (github.event.pull_request.draft == false || github.event_name != 'pull_request')
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install ruff
@@ -90,7 +90,7 @@ jobs:
     if: needs.detect.outputs.has-pyproject == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -154,7 +154,7 @@ jobs:
       CELERY_RESULT_BACKEND: redis://localhost:6379/2
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -190,7 +190,7 @@ jobs:
       DEBUG: "False"
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -205,7 +205,7 @@ jobs:
     if: needs.detect.outputs.has-pyproject == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -227,7 +227,7 @@ jobs:
       # Dependabot will open a PR when a newer safe version is released.
       - name: Trivy Dockerfile scan
         if: needs.detect.outputs.has-django == 'true'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref:  docker/Dockerfile.prod
