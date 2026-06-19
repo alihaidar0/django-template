@@ -73,7 +73,7 @@ jobs:
       (github.event.pull_request.draft == false || github.event_name != 'pull_request')
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install ruff
@@ -90,7 +90,7 @@ jobs:
     if: needs.detect.outputs.has-pyproject == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -154,7 +154,7 @@ jobs:
       CELERY_RESULT_BACKEND: redis://localhost:6379/2
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -170,7 +170,7 @@ jobs:
       - name: Run pytest with coverage
         run: uv run pytest --cov=. --cov-report=xml --cov-report=term-missing -v
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           files: ./coverage.xml
@@ -190,7 +190,7 @@ jobs:
       DEBUG: "False"
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
@@ -205,7 +205,7 @@ jobs:
     if: needs.detect.outputs.has-pyproject == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
       - name: Install dependencies
