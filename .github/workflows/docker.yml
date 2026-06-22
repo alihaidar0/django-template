@@ -37,7 +37,7 @@ jobs:
       image-tags:   ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check if Django project is initialised
         id: project-check
