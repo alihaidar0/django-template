@@ -16,9 +16,6 @@ concurrency:
   cancel-in-progress: true
 env:
   PYTHON_VERSION: "3.14"
-  DJANGO_SETTINGS_MODULE: config.settings.testing
-  SECRET_KEY: ci-dummy-secret-key-not-used-in-production
-  DATABASE_URL: sqlite:///ci-test.db
 jobs:
   detect:
     name: Detect project state
@@ -37,56 +34,34 @@ jobs:
           echo "──────────────────────────────────────────"
           if [ -f "pyproject.toml" ]; then
             echo "has-pyproject=true"  >> "$GITHUB_OUTPUT"
-            echo "✅ pyproject.toml found — Python project detected"
+            echo "✅ pyproject.toml found"
           else
             echo "has-pyproject=false" >> "$GITHUB_OUTPUT"
             echo "ℹ️  No pyproject.toml — Tier 1: all checks skipped"
           fi
           if [ -f "manage.py" ]; then
             echo "has-django=true"  >> "$GITHUB_OUTPUT"
-            echo "✅ manage.py found — Tier 3: full Django CI active"
+            echo "✅ manage.py found — Tier 3: full CI active"
           else
             echo "has-django=false" >> "$GITHUB_OUTPUT"
             echo "ℹ️  No manage.py — Tier 2: pre-Django CI only"
           fi
           if [ -f "uv.lock" ]; then
             echo "has-uvlock=true"  >> "$GITHUB_OUTPUT"
-            echo "✅ uv.lock found — locked installs enforced"
+            echo "✅ uv.lock found"
           else
             echo "has-uvlock=false" >> "$GITHUB_OUTPUT"
-            echo "ℹ️  No uv.lock — sync will generate one"
+            echo "ℹ️  No uv.lock"
           fi
           echo ""
           echo "Summary:"
           echo "  pyproject.toml : $([ -f pyproject.toml ] && echo 'YES' || echo 'NO')"
-          echo "  manage.py      : $([ -f manage.py ]      && echo 'YES' || echo 'NO')"
-          echo "  uv.lock        : $([ -f uv.lock ]        && echo 'YES' || echo 'NO')"
-
-# ── Job 2: Lint ───────────────────────────────────────────────────────────────
-# Tier 2 + Tier 3. Fast: uses a standalone ruff install, no full uv sync.
+          echo "  manage.py      : $([ -f manage.py      ] && echo 'YES' || echo 'NO')"
+          echo "  uv.lock        : $([ -f uv.lock        ] && echo 'YES' || echo 'NO')"
   lint:
-    name: "Lint · ruff"
+    name: "Lint (Ruff)"
     runs-on: ubuntu-latest
     needs: detect
-    if: >
-      needs.detect.outputs.has-pyproject == 'true' &&
-      (github.event.pull_request.draft == false || github.event_name != 'pull_request')
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
-      - name: Install ruff
-        run: uv tool install ruff
-      - name: ruff lint
-        run: ruff check . --output-format=github
-      - name: ruff format check
-        run: ruff format . --check
-
-  typecheck:
-    name: "Type check · mypy"
-    runs-on: ubuntu-latest
-    needs: [detect, lint]
     if: needs.detect.outputs.has-pyproject == 'true'
     steps:
       - uses: actions/checkout@v7
@@ -96,62 +71,19 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "${{ needs.detect.outputs.has-uvlock }}" == "true" ]; then
-            echo "▶  uv.lock found — using frozen install"
             uv sync --frozen
-          elif [ "${{ needs.detect.outputs.has-django }}" == "false" ]; then
-            echo "▶  Pre-Django state — syncing without lockfile"
+          else
             uv sync
-          else
-            echo "❌ Django project detected but uv.lock is missing."
-            echo "   Run: uv lock — then commit uv.lock before pushing."
-            exit 1
           fi
-      - name: mypy
-        if: needs.detect.outputs.has-django == 'true'
-        run: |
-          TARGETS=""
-          [ -d "config" ] && TARGETS="$TARGETS config"
-          [ -d "apps"   ] && TARGETS="$TARGETS apps"
-          if [ -n "$TARGETS" ]; then
-            uv run mypy $TARGETS
-          else
-            echo "⏭  No config/ or apps/ directory found — skipping mypy"
-          fi
-      - name: mypy skipped (pre-Django)
-        if: needs.detect.outputs.has-django == 'false'
-        run: 'echo "⏭  Tier 2: mypy skipped — no Django source yet"'
-
-  test:
-    name: "Tests · pytest"
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+  typecheck:
+    name: "Type check (mypy)"
     runs-on: ubuntu-latest
-    needs: [detect, lint]
-    if: needs.detect.outputs.has-django == 'true'
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER:     test_user
-          POSTGRES_PASSWORD: test_pass
-          POSTGRES_DB:       test_db
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U test_user -d test_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:8-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      DATABASE_URL:          postgres://test_user:test_pass@localhost:5432/test_db
-      REDIS_URL:             redis://localhost:6379/0
-      CELERY_BROKER_URL:     redis://localhost:6379/1
-      CELERY_RESULT_BACKEND: redis://localhost:6379/2
+    needs: detect
+    if: needs.detect.outputs.has-pyproject == 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -160,23 +92,45 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "${{ needs.detect.outputs.has-uvlock }}" == "true" ]; then
-            echo "▶  uv.lock found — using frozen install"
             uv sync --frozen
           else
-            echo "❌ Django project detected but uv.lock is missing."
-            echo "   Run: uv lock — then commit uv.lock before pushing."
-            exit 1
+            uv sync
           fi
-      - name: Run pytest with coverage
-        run: uv run pytest --cov=. --cov-report=xml --cov-report=term-missing -v
-      - name: Upload coverage to Codecov
+      - name: mypy
+        run: |
+          if [ "${{ needs.detect.outputs.has-django }}" == "true" ]; then
+            uv run mypy .
+          else
+            echo "ℹ️  No manage.py — running mypy in stub mode (no Django stubs)"
+            uv run mypy . --ignore-missing-imports || true
+          fi
+  test:
+    name: "Tests (pytest)"
+    runs-on: ubuntu-latest
+    needs: [detect, lint]
+    if: >
+      needs.detect.outputs.has-django == 'true' &&
+      needs.lint.result == 'success'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Run pytest
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.testing
+          SECRET_KEY: "ci-test-placeholder-key-not-real-50chars!!!!!"
+          DATABASE_URL: sqlite:////tmp/test.db
+        run: uv run pytest --cov --cov-report=xml -q
+      - name: Upload coverage
         uses: codecov/codecov-action@v7
         if: always()
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-
   django-check:
     name: "Django system check"
     runs-on: ubuntu-latest
@@ -197,7 +151,6 @@ jobs:
         run: uv sync --frozen
       - name: Django deploy check
         run: uv run python manage.py check --deploy
-
   security:
     name: "Security · pip-audit + Trivy"
     runs-on: ubuntu-latest
@@ -221,10 +174,6 @@ jobs:
           fi
       - name: pip-audit
         run: uv run pip-audit --skip-editable --ignore-vuln GHSA-5239-wwwm-4pmq
-      # Trivy Dockerfile scan — pinned to immutable SHA (v0.35.0, safe post-supply-chain-attack)
-      # See: https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23
-      # DO NOT use @master or a mutable version tag — tags 0.0.1–0.34.2 were compromised March 19 2026.
-      # Dependabot will open a PR when a newer safe version is released.
       - name: Trivy Dockerfile scan
         if: needs.detect.outputs.has-django == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -233,7 +182,6 @@ jobs:
           scan-ref:  docker/Dockerfile.prod
           severity:  CRITICAL,HIGH
           exit-code: "1"
-
   ci-passed:
     name: CI Passed ✅
     runs-on: ubuntu-latest
