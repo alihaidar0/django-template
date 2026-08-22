@@ -1,10 +1,12 @@
 name: django-project
-
 services:
   app:
     image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
     container_name: django_app
-    restart: unless-stopped
+    # "no" is correct for a dev container — if the entrypoint crashes during
+    # development you want it to stop loudly, not restart in a tight loop.
+    # "unless-stopped" is the right policy for production, not for dev.
+    restart: "no"
     entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
     command: sleep infinity
     volumes:
@@ -37,7 +39,6 @@ services:
     working_dir: /workspace
     networks:
       - django-network
-
   db:
     image: postgres:18-alpine
     container_name: django_postgres
@@ -58,7 +59,6 @@ services:
       start_period: 10s
     networks:
       - django-network
-
   redis:
     image: redis:8-alpine
     container_name: django_redis
@@ -75,17 +75,26 @@ services:
       retries: 10
     networks:
       - django-network
-
   celery:
     image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
     container_name: django_celery
-    restart: unless-stopped
+    # "no" — if manage.py doesn't exist yet the command below blocks with
+    # sleep infinity instead of exiting, so there is no restart loop.
+    # If the real celery worker crashes during dev, fail loudly.
+    restart: "no"
     entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
-    # Guard: only starts Celery if manage.py exists; otherwise waits silently.
+    # Guard: if manage.py exists start the real worker; otherwise block quietly.
+    # sleep infinity (not echo + exit) prevents a tight restart loop on a
+    # fresh template where manage.py hasn't been created yet.
     command: >
-      sh -c '[ -f /workspace/manage.py ] &&
-             watchfiles "celery -A config worker -l INFO --pool=solo" /workspace ||
-             echo "⏳ No manage.py — Celery worker waiting for Django initialisation"'
+      sh -c '
+        if [ -f /workspace/manage.py ]; then
+          exec watchfiles "celery -A config worker -l INFO --pool=solo" /workspace
+        else
+          echo "⏳ No manage.py — Celery worker sleeping until Django is initialised"
+          exec sleep infinity
+        fi
+      '
     volumes:
       - .:/workspace:cached
       - uv-cache:/root/.cache/uv
@@ -103,17 +112,21 @@ services:
     working_dir: /workspace
     networks:
       - django-network
-
   celery-beat:
     image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
     container_name: django_celery_beat
-    restart: unless-stopped
+    # Same reasoning as the celery service above.
+    restart: "no"
     entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
-    # Guard: only starts Beat if manage.py exists; otherwise waits silently.
     command: >
-      sh -c '[ -f /workspace/manage.py ] &&
-             celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler ||
-             echo "⏳ No manage.py — Celery Beat waiting for Django initialisation"'
+      sh -c '
+        if [ -f /workspace/manage.py ]; then
+          exec celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+        else
+          echo "⏳ No manage.py — Celery Beat sleeping until Django is initialised"
+          exec sleep infinity
+        fi
+      '
     volumes:
       - .:/workspace:cached
       - uv-cache:/root/.cache/uv
@@ -131,7 +144,6 @@ services:
     working_dir: /workspace
     networks:
       - django-network
-
   mailpit:
     image: axllent/mailpit:latest
     container_name: django_mailpit
@@ -141,13 +153,11 @@ services:
       - "1025:1025"
     networks:
       - django-network
-
 volumes:
   postgres-data:
   redis-data:
   uv-cache:
   shell-history:
-
 networks:
   django-network:
     driver: bridge
