@@ -1,68 +1,107 @@
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Every pinned version in this repo is covered by one ecosystem below:
+#   github-actions  .github/workflows/* — action SHA pins + "# vX.Y.Z" comments,
+#                   including the reusable docker/github-builder workflow
+#   docker          docker/Dockerfile.prod — FROM lines (python base + uv), tag + digest
+#   docker-compose  docker-compose.yml — postgres, redis, mailpit (tag + digest)
+#   pre-commit      .pre-commit-config.yaml — hook revs
+#   uv              pyproject.toml + uv.lock — ENABLE after `uv init` (block at the end)
+#
+# Branch model: every PR targets `develop`; releases reach `main` through the
+# develop → main PR. GitHub always opens *security* update PRs against the
+# default branch (target-branch doesn't apply to them), and main only accepts
+# PRs from develop — so the "Dependabot security updates" repository setting
+# stays OFF. Alerts stay on; these weekly version updates carry the fixes.
+#
+# Cooldown: a version update is proposed only once the release is 7 days old,
+# so a compromised or broken release is usually caught (and yanked) upstream
+# before it reaches a PR.
 version: 2
+
 updates:
   # ── GitHub Actions ────────────────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    target-branch: "main"
-    rebase-strategy: "auto"
-    assignees:
-      - "alihaidar0"
-    commit-message:
-      prefix: "ci"
-      include: "scope"
-    labels:
-      - "dependencies"
-      - "github-actions"
+    schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
+    cooldown: { default-days: 7 }
+    target-branch: "develop"
+    assignees: ["alihaidar0"]
+    commit-message: { prefix: "ci", include: "scope" }
+    labels: ["dependencies", "github-actions"]
     groups:
       github-actions-all:
-        patterns:
-          - "*"
+        patterns: ["*"]
     open-pull-requests-limit: 5
 
-  # ── Docker base image ─────────────────────────────────────────────────
+  # ── Production image (python base + uv) ──────────────────────────────
   - package-ecosystem: "docker"
     directory: "/docker"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    target-branch: "main"
-    rebase-strategy: "auto"
-    assignees:
-      - "alihaidar0"
-    commit-message:
-      prefix: "build"
-      include: "scope"
-    labels:
-      - "dependencies"
-      - "docker"
-    open-pull-requests-limit: 3
+    schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
+    cooldown: { default-days: 7 }
+    target-branch: "develop"
+    assignees: ["alihaidar0"]
+    commit-message: { prefix: "build", include: "scope" }
+    labels: ["dependencies", "docker"]
+    groups:
+      # uv minor + patch grouped; every python bump arrives as its own PR.
+      docker-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        exclude-patterns: ["python"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 5
 
-  # ── Pre-commit hooks ──────────────────────────────────────────────────
+  # ── Dev services (postgres, redis, mailpit) ──────────────────────────
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
+    cooldown: { default-days: 7 }
+    target-branch: "develop"
+    assignees: ["alihaidar0"]
+    commit-message: { prefix: "build", include: "scope" }
+    labels: ["dependencies", "docker"]
+    groups:
+      # Patch/minor together; a new PostgreSQL or Redis major arrives alone
+      # (a Postgres major needs a dump/restore of the dev volume).
+      compose-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 5
+
+  # ── pre-commit hooks ─────────────────────────────────────────────────
   - package-ecosystem: "pre-commit"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    target-branch: "main"
-    rebase-strategy: "auto"
-    assignees:
-      - "alihaidar0"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    labels:
-      - "dependencies"
+    schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
+    cooldown: { default-days: 7 }
+    target-branch: "develop"
+    assignees: ["alihaidar0"]
+    commit-message: { prefix: "chore", include: "scope" }
+    labels: ["dependencies", "pre-commit"]
     groups:
       pre-commit-hooks-all:
-        patterns:
-          - "*"
+        patterns: ["*"]
     open-pull-requests-limit: 3
+
+  # ── Python dependencies — uncomment after `uv init` ──────────────────
+  # Left commented in the template itself: without pyproject.toml the job
+  # would fail every week. scripts/init-django.sh reminds you to enable it.
+  #
+  # - package-ecosystem: "uv"
+  #   directory: "/"
+  #   schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
+  #   cooldown: { default-days: 7 }
+  #   target-branch: "develop"
+  #   assignees: ["alihaidar0"]
+  #   commit-message: { prefix: "build", prefix-development: "chore", include: "scope" }
+  #   labels: ["dependencies", "python"]
+  #   versioning-strategy: "increase-if-necessary"
+  #   allow:
+  #     - dependency-type: "all"
+  #   groups:
+  #     python-minor-patch:
+  #       applies-to: version-updates
+  #       patterns: ["*"]
+  #       update-types: ["minor", "patch"]
+  #   open-pull-requests-limit: 10

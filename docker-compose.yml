@@ -1,163 +1,143 @@
-name: django-project
+# ============================================================
+#  docker-compose.yml — development stack
+#
+#  Pulls the pre-built dev image (no local build) for app, celery and
+#  celery-beat; everything else is a stock, pinned image.
+#
+#    app          VS Code attaches here (/workspace = this folder)
+#    celery       worker — waits for manage.py, reloads on code change
+#    celery-beat  scheduler — waits for manage.py
+#    db           PostgreSQL 18
+#    redis        cache + Celery broker/result backend
+#    mailpit      catches outgoing email (UI :8025, SMTP :1025)
+#
+#  The compose project name defaults to the folder name, so every
+#  project gets its own containers, network and volumes.
+#
+#  Git inside the container: VS Code Dev Containers forwards the host
+#  ssh-agent and copies ~/.gitconfig automatically — no key mounts.
+#
+#  The project's .venv lives in a named volume (Linux filesystem), not in
+#  the bind-mounted folder: installs and imports stay fast even when the
+#  project sits on a Windows/macOS drive. Shared by app, celery, beat.
+# ============================================================
+
+# ── Shared settings for the three containers built from the dev image ──
+x-dev-image: &dev-image
+  # The shared dev image (non-root user `dev`). Override with DEVCONTAINER_IMAGE
+  # in .env to pin a tag, e.g. alihaidar199527/django-devcontainer:20260926.
+  image: ${DEVCONTAINER_IMAGE:-alihaidar199527/django-devcontainer:latest}
+  # tini as PID 1: forwards signals and reaps zombies, so `docker compose stop`
+  # is instant instead of waiting 10 s for `sleep infinity`.
+  init: true
+  working_dir: /workspace
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
+    SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+    DEBUG: ${DEBUG:-True}
+    ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
+    DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    EMAIL_HOST: mailpit
+    EMAIL_PORT: "1025"
+  volumes:
+    - .:/workspace:cached
+    - venv:/workspace/.venv
+    - uv-cache:/home/dev/.cache/uv
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  # "no": if a process crashes during development it should stop loudly,
+  # not restart in a tight loop.
+  restart: "no"
+
 services:
   app:
-    image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
-    container_name: django_app
-    # "no" is correct for a dev container — if the entrypoint crashes during
-    # development you want it to stop loudly, not restart in a tight loop.
-    # "unless-stopped" is the right policy for production, not for dev.
-    restart: "no"
-    entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
+    <<: *dev-image
     command: sleep infinity
     volumes:
       - .:/workspace:cached
-      - ${USERPROFILE:-$HOME}/.gitconfig:/root/.gitconfig:ro
-      - ${USERPROFILE:-$HOME}/.ssh:/root/.ssh:cached
-      - uv-cache:/root/.cache/uv
-      - shell-history:/root/.shell_history
-    environment:
-      GIT_SSH_COMMAND: "ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
-      DJANGO_SETTINGS_MODULE: config.settings.development
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      DEBUG: "True"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
-      DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-      EMAIL_HOST: mailpit
-      EMAIL_PORT: "1025"
+      - venv:/workspace/.venv
+      - uv-cache:/home/dev/.cache/uv
+      - shell-history:/home/dev/.shell_history
     ports:
-      - "8000:8000"
-      - "5678:5678"
-      - "5555:5555"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    working_dir: /workspace
-    networks:
-      - django-network
+      - "127.0.0.1:8000:8000"   # Django dev server
+      - "127.0.0.1:5555:5555"   # Flower
+      - "127.0.0.1:5678:5678"   # debugpy
+
+  celery:
+    <<: *dev-image
+    # Waits until the project exists (manage.py) and its dependencies are
+    # installed (.venv/bin/celery), then starts on its own — no restart needed
+    # after the quickstart. watchfiles restarts the worker on code changes.
+    command: >
+      sh -c '
+        echo "⏳ Celery worker waits for manage.py and the project venv (uv sync)…"
+        until [ -f manage.py ] && [ -x .venv/bin/celery ]; do sleep 5; done
+        exec watchfiles --filter python "celery -A config worker -l INFO --pool=solo" /workspace
+      '
+
+  celery-beat:
+    <<: *dev-image
+    command: >
+      sh -c '
+        echo "⏳ Celery Beat waits for manage.py and the project venv (uv sync)…"
+        until [ -f manage.py ] && [ -x .venv/bin/celery ]; do sleep 5; done
+        exec celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      '
+
   db:
-    image: postgres:18-alpine
-    container_name: django_postgres
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     restart: unless-stopped
     environment:
-      POSTGRES_USER:     ${POSTGRES_USER:-django}
+      POSTGRES_USER: ${POSTGRES_USER:-django}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-django_pass}
-      POSTGRES_DB:       ${POSTGRES_DB:-django_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-django_dev}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # PostgreSQL 18+ keeps data in /var/lib/postgresql/18/docker, so the volume
+      # is mounted one level up. Mounting .../data (the pre-18 path) would leave
+      # the real data in an anonymous volume that `docker compose down` discards.
+      - postgres-data:/var/lib/postgresql
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-django} -d ${POSTGRES_DB:-django_dev}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
-    networks:
-      - django-network
+
   redis:
-    image: redis:8-alpine
-    container_name: django_redis
+    image: redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
-    networks:
-      - django-network
-  celery:
-    image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
-    container_name: django_celery
-    # "no" — if manage.py doesn't exist yet the command below blocks with
-    # sleep infinity instead of exiting, so there is no restart loop.
-    # If the real celery worker crashes during dev, fail loudly.
-    restart: "no"
-    entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
-    # Guard: if manage.py exists start the real worker; otherwise block quietly.
-    # sleep infinity (not echo + exit) prevents a tight restart loop on a
-    # fresh template where manage.py hasn't been created yet.
-    command: >
-      sh -c '
-        if [ -f /workspace/manage.py ]; then
-          exec watchfiles "celery -A config worker -l INFO --pool=solo" /workspace
-        else
-          echo "⏳ No manage.py — Celery worker sleeping until Django is initialised"
-          exec sleep infinity
-        fi
-      '
-    volumes:
-      - .:/workspace:cached
-      - uv-cache:/root/.cache/uv
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.development
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    working_dir: /workspace
-    networks:
-      - django-network
-  celery-beat:
-    image: ${DOCKERHUB_USERNAME:-alihaidar199527}/django-devcontainer:latest
-    container_name: django_celery_beat
-    # Same reasoning as the celery service above.
-    restart: "no"
-    entrypoint: ["/workspace/scripts/entrypoint.dev.sh"]
-    command: >
-      sh -c '
-        if [ -f /workspace/manage.py ]; then
-          exec celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
-        else
-          echo "⏳ No manage.py — Celery Beat sleeping until Django is initialised"
-          exec sleep infinity
-        fi
-      '
-    volumes:
-      - .:/workspace:cached
-      - uv-cache:/root/.cache/uv
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.development
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    working_dir: /workspace
-    networks:
-      - django-network
+
   mailpit:
-    image: axllent/mailpit:latest
-    container_name: django_mailpit
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
     restart: unless-stopped
     ports:
-      - "8025:8025"
-      - "1025:1025"
-    networks:
-      - django-network
+      - "127.0.0.1:8025:8025"   # web UI
+      - "127.0.0.1:1025:1025"   # SMTP
+
 volumes:
+  venv:
   postgres-data:
   redis-data:
   uv-cache:
   shell-history:
-networks:
-  django-network:
-    driver: bridge

@@ -1,96 +1,84 @@
+# syntax=docker/dockerfile:1
 # ============================================================
-#  docker/Dockerfile.prod
+#  docker/Dockerfile.prod — production image (Gunicorn)
 #
-#  Production image — Gunicorn + collected static files.
-#  Built by GitHub Actions on merge to main.
-#  Pushed to: $DOCKERHUB_USERNAME/<repo-name>:latest
+#  Built and published by .github/workflows/docker.yml on every
+#  release (merge develop → main), and built + smoke-tested in CI
+#  on every develop push. Deployment-agnostic (Cloud Run, GKE, …).
+#
+#    builder  pinned uv resolves the locked dependencies into /app/.venv
+#    runtime  slim Python + the venv + the code; non-root, no uv, no compilers
 #
 #  Build locally:
-#    docker build -f docker/Dockerfile.prod -t my-project-prod .
-#
-#  Python 3.14 reached GA in October 2025.
-#  The float tag (3.14) always pulls the latest patch release.
+#    docker build -f docker/Dockerfile.prod -t my-project:prod .
 # ============================================================
 
-ARG PYTHON_VERSION=3.14
-FROM python:${PYTHON_VERSION}-slim-bookworm AS base
+# ── Pinned inputs (literal FROM lines so Dependabot can bump them) ──
+FROM ghcr.io/astral-sh/uv:0.12.19@sha256:04d046b13e60d6bcec73cbc5e1cad25d680dea90c8573340950a0ac2d1aef424 AS uv
 
-# ── Environment ────────────────────────────────────────────────────────
+FROM python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS base
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_CACHE_DIR=/root/.cache/uv \
-    UV_COMPILE_BYTECODE=1 \
-    UV_FROZEN=1 \
-    PATH="/root/.local/bin:$PATH"
+    LANG=C.UTF-8
 
-# ── System dependencies ────────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# ── Install uv ────────────────────────────────────────────────────────
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# ═════════════════════════════ builder ═════════════════════════════
+FROM base AS builder
 
-# ── Non-root app user ──────────────────────────────────────────────────
-RUN groupadd --gid 1001 appgroup && \
-    useradd --uid 1001 --gid appgroup --no-create-home appuser
+COPY --from=uv /uv /usr/local/bin/uv
+
+# Compile bytecode for faster starts; copy (not hardlink) out of the cache
+# mount; use the image's Python, never download another one.
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
-# ── Install Python dependencies ────────────────────────────────────────
-# Layer order is deliberate for maximum Docker cache efficiency:
-#   Layer A — uv.lock:        busted only when dependency versions change
-#   Layer B — pyproject.toml: busted only when metadata/constraints change
-#   Layer C — uv sync:        only re-runs when A or B are cache-busted
-#
-# Flags:
-#   --no-dev              → exclude test/lint tools from the production image
-#   --no-install-project  → install only declared deps, not the local package
-#   --frozen              → FAIL if uv.lock is absent or out of sync
-ARG CACHE_BUST=unknown
+# Dependencies first — this layer is rebuilt only when the lock changes.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    uv sync --locked --no-dev --no-install-project
 
-# uv.loc[k] glob avoids a BuildKit crash if the file is missing in a fresh repo
-COPY pyproject.toml uv.loc[k] ./
-
-RUN uv sync --no-dev --no-install-project --frozen
-
-# ── Copy source code ───────────────────────────────────────────────────
 COPY . .
 
-# ── Collect static files ───────────────────────────────────────────────
-# Guard: skip gracefully on a fresh template (no manage.py yet).
-RUN if [ -f "manage.py" ]; then \
-        echo "▶  Collecting static files..." && \
-        DJANGO_SETTINGS_MODULE=config.settings.production \
-        SECRET_KEY=placeholder-for-collectstatic-only \
-        DATABASE_URL=sqlite:////tmp/collectstatic.db \
-        uv run python manage.py collectstatic --noinput && \
-        echo "✅ Static files collected"; \
-    else \
-        echo "ℹ️  No manage.py found — skipping collectstatic (fresh template)"; \
-    fi
+# Collect static files at build time (no database needed).
+RUN SECRET_KEY=collectstatic-only \
+    DJANGO_SETTINGS_MODULE=config.settings.production \
+    DATABASE_URL=sqlite:////tmp/collectstatic.db \
+    /app/.venv/bin/python manage.py collectstatic --noinput
 
-# ── Production entrypoint ──────────────────────────────────────────────
-COPY scripts/entrypoint.prod.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# ═════════════════════════════ runtime ═════════════════════════════
+FROM base AS runtime
 
-# ── Ownership ──────────────────────────────────────────────────────────
-RUN chown -R appuser:appgroup /app
+# libpq5: runtime client library for psycopg (tiny; harmless with psycopg[binary]).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-USER appuser
+RUN groupadd --gid 1001 app \
+    && useradd --uid 1001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
-ENTRYPOINT ["/entrypoint.sh"]
+WORKDIR /app
+
+COPY --from=builder --chown=app:app /app /app
+COPY --chmod=0755 scripts/entrypoint.prod.sh /usr/local/bin/entrypoint
+
+ENV PATH="/app/.venv/bin:${PATH}" \
+    DJANGO_SETTINGS_MODULE=config.settings.production \
+    PORT=8080 \
+    WEB_CONCURRENCY=2
+
+# Numeric UID:GID so platforms can verify non-root (e.g. Kubernetes runAsNonRoot).
+USER 1001:1001
 
 EXPOSE 8080
 
-# workers=2 suits Cloud Run's single-vCPU minimum.
-# Override at runtime via GUNICORN_WORKERS env var if needed.
-CMD ["uv", "run", "gunicorn", \
-     "--bind",           "0.0.0.0:8080", \
-     "--workers",        "2", \
-     "--threads",        "4", \
-     "--timeout",        "120", \
-     "--access-logfile", "-", \
-     "--error-logfile",  "-", \
-     "config.wsgi:application"]
+ENTRYPOINT ["entrypoint"]
+# Gunicorn reads WEB_CONCURRENCY (workers); the entrypoint binds to $PORT.
+CMD ["gunicorn", "config.wsgi:application"]

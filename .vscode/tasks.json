@@ -92,7 +92,7 @@
     {
       "label": "Mypy: Type Check",
       "type": "shell",
-      "command": "uv run mypy config",
+      "command": "uv run mypy .",
       "group": "none",
       "presentation": { "reveal": "always", "panel": "shared" }
     },

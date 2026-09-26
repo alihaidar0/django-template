@@ -14,8 +14,6 @@
 *.pfx
 *.crt
 *.cer
-*secret*
-*credential*
 service-account*.json
 gcp-credentials*.json
 application_default_credentials.json
@@ -132,4 +130,5 @@ $RECYCLE.BIN/
 .Trash-*
 .nfs*
 
-django-template-code.xml
+# repomix output
+*-code.xml

@@ -1,28 +1,37 @@
 # ============================================================
-#  .dockerignore
-#  Excludes everything not needed in the production image.
+#  .dockerignore — build context for docker/Dockerfile.prod
+#  Only the application code, pyproject.toml, uv.lock and the prod
+#  entrypoint are needed. Keeps the context small and secrets out.
 # ============================================================
 
-# ── Git ────────────────────────────────────────────────────────────────────
+# ── VCS / CI / editor ──────────────────────────────────────────────────────
 .git
 .gitignore
 .gitattributes
 .github
+.devcontainer
+.vscode
+.idea
+.editorconfig
 
-# ── Docker ─────────────────────────────────────────────────────────────────
+# ── Docker / dev tooling ───────────────────────────────────────────────────
 .dockerignore
 docker-compose*.yml
 docker/
+.pre-commit-config.yaml
+.hadolint.yaml
+.markdownlint-cli2.jsonc
+cspell.json
+.cspell/
+repomix.config.json
+*-code.xml
+scripts/*
+!scripts/entrypoint.prod.sh
 
-# ── Dev Container ──────────────────────────────────────────────────────────
-.devcontainer
-
-# ── Python cache ───────────────────────────────────────────────────────────
+# ── Python cache / builds ──────────────────────────────────────────────────
 __pycache__
 *.py[cod]
-*$py.class
 *.so
-*.egg
 *.egg-info
 dist/
 build/
@@ -30,24 +39,19 @@ build/
 # ── Virtual environments ───────────────────────────────────────────────────
 .venv
 venv/
-env/
-.uv/
 
-# ── Test + coverage ────────────────────────────────────────────────────────
+# ── Test + type-check caches ───────────────────────────────────────────────
 .pytest_cache
+.mypy_cache
+.ruff_cache
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
 
-# ── Type checking ──────────────────────────────────────────────────────────
-.mypy_cache
-.ruff_cache/
-
 # ── Secrets ────────────────────────────────────────────────────────────────
 .env
 .env.*
-!.env.example
 *.pem
 *.key
 *.crt
@@ -62,20 +66,8 @@ staticfiles/
 Thumbs.db
 Desktop.ini
 
-# ── IDE ────────────────────────────────────────────────────────────────────
-.vscode/
-.idea/
-
-# ── Logs ───────────────────────────────────────────────────────────────────
-*.log
-logs/
-
-# ── Docs ───────────────────────────────────────────────────────────────────
-docs/
+# ── Docs / logs ────────────────────────────────────────────────────────────
 *.md
-
-# ── Dev tooling ────────────────────────────────────────────────────────────
-.pre-commit-config.yaml
-scripts/entrypoint.dev.sh
-scripts/welcome.sh
-scripts/hooks/
+LICENSE
+docs/
+*.log
