@@ -1,27 +1,27 @@
 {
+  // Dev Container spec: https://containers.dev/implementors/json_reference/
+  //
+  // The image (alihaidar199527/django-devcontainer) is pulled, never built.
+  // Its `devcontainer.metadata` label already sets remoteUser = dev and
+  // updateRemoteUserUID, so neither is repeated here.
   "name": "Django Dev Container",
   "dockerComposeFile": ["../docker-compose.yml"],
   "service": "app",
   "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
 
   // ── Forwarded ports ──────────────────────────────────────────────────
-  "forwardPorts": [
-    8000,   // Django dev server
-    5432,   // PostgreSQL
-    6379,   // Redis
-    8025,   // Mailpit web UI
-    5555,   // Flower (Celery monitor)
-    5678    // debugpy (VS Code debugger)
-  ],
-
+  "forwardPorts": [8000, 5432, 6379, 8025, 5555, 5678],
   "portsAttributes": {
-    "8000": { "label": "Django",   "onAutoForward": "notify" },
-    "8025": { "label": "Mailpit",  "onAutoForward": "silent" },
-    "5555": { "label": "Flower",   "onAutoForward": "silent" },
-    "5678": { "label": "debugpy",  "onAutoForward": "silent" }
+    "8000": { "label": "Django", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "6379": { "label": "Redis", "onAutoForward": "silent" },
+    "8025": { "label": "Mailpit", "onAutoForward": "silent" },
+    "5555": { "label": "Flower", "onAutoForward": "silent" },
+    "5678": { "label": "debugpy", "onAutoForward": "silent" }
   },
 
-  // ── VS Code extensions ───────────────────────────────────────────────
+  // ── VS Code ──────────────────────────────────────────────────────────
   "customizations": {
     "vscode": {
       "extensions": [
@@ -29,35 +29,40 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.debugpy",
+        "ms-python.mypy-type-checker",
         "charliermarsh.ruff",
-        "matangover.mypy",
         // Django
         "batisteo.vscode-django",
-        // Docker / containers
-        "ms-azuretools.vscode-docker",
+        // Containers
+        "ms-azuretools.vscode-containers",
         // Git
         "eamodio.gitlens",
         "mhutchie.git-graph",
-        // Database
+        "github.vscode-github-actions",
+        // Database / API
         "cweijan.vscode-postgresql-client2",
-        // REST API testing
         "humao.rest-client",
+        // Quality of the repo's own files (same checks as the Lint workflow)
+        "streetsidesoftware.code-spell-checker",
+        "davidanson.vscode-markdownlint",
+        "timonwong.shellcheck",
+        "exiasr.hadolint",
         // Utilities
         "tamasfe.even-better-toml",
-        "editorconfig.editorconfig",
-        "ms-vscode.makefile-tools"
+        "editorconfig.editorconfig"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
-        "python.terminal.activateEnvironment": true,
         "[python]": {
           "editor.formatOnSave": true,
+          "editor.defaultFormatter": "charliermarsh.ruff",
           "editor.codeActionsOnSave": {
             "source.fixAll.ruff": "explicit",
             "source.organizeImports.ruff": "explicit"
-          },
-          "editor.defaultFormatter": "charliermarsh.ruff"
+          }
         },
+        // The project's mypy (from `uv add --dev mypy django-stubs`) and its config.
+        "mypy-type-checker.importStrategy": "fromEnvironment",
         "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],
         "terminal.integrated.defaultProfile.linux": "bash",
         "files.watcherExclude": {
@@ -72,15 +77,10 @@
     }
   },
 
-  // ── Lifecycle hooks ──────────────────────────────────────────────────
-  // postCreateCommand: intentionally omitted — no pyproject.toml on a fresh
-  // template, so there is nothing to install. The developer runs `uv init`
-  // manually as the first step. Pre-commit hooks are installed after
-  // `pyproject.toml` exists and dependencies are in place.
-  //
-  // postStartCommand: shows context-aware getting-started instructions
-  // every time the container starts.
-  "postStartCommand": "bash /workspace/scripts/welcome.sh",
-
-  "remoteUser": "root"
+  // ── Lifecycle ────────────────────────────────────────────────────────
+  // postCreateCommand (once): owns the .venv volume; on an existing project
+  // (uv.lock present) also runs `uv sync --locked` and `pre-commit install`.
+  // postStartCommand (every start): context-aware next steps.
+  "postCreateCommand": "bash /workspace/scripts/post-create.sh",
+  "postStartCommand": "bash /workspace/scripts/welcome.sh"
 }

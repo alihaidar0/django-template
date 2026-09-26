@@ -1,234 +1,330 @@
+# ============================================================
+#  .github/workflows/ci.yml
+#
+#  Project CI with graceful degradation — never fails on a fresh
+#  template, activates checks as the project grows:
+#
+#    Tier 1  template     no pyproject.toml   pre-commit · prod-image (scaffolded sample project,
+#                                             itself checked with mypy · pytest · migrations · deploy check)
+#    Tier 2  pre-Django   pyproject.toml      pre-commit · pip-audit
+#    Tier 3  Django       manage.py + uv.lock pre-commit · mypy · pytest (PostgreSQL) ·
+#                                             check --deploy · pip-audit · prod-image
+#
+#  "prod-image" builds docker/Dockerfile.prod and serves one request
+#  through Gunicorn. On a fresh template it first scaffolds a sample
+#  project with the exact documented steps (uv init --bare → uv add →
+#  scripts/init-django.sh), checks it like a real project, and smoke-tests
+#  /healthz + the CSP header — so the template's instructions are tested.
+#
+#  Branch model: develop (direct pushes, Dependabot PRs) ─PR─▶ main.
+#  Runs on develop pushes and PRs into develop; the single gate job
+#  "CI" is a REQUIRED check on main, and the develop → main PR reuses
+#  the result of develop's head commit (checks attach to commits).
+# ============================================================
+
 name: CI
+
 on:
   push:
-    branches:
-      - "**"
-    paths-ignore:
-      - "**.md"
-      - ".gitignore"
-      - "docs/**"
+    branches: [develop]
   pull_request:
-    branches: [main, develop]
-    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [develop]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' }}
+
 env:
   PYTHON_VERSION: "3.14"
+  UV_PYTHON_DOWNLOADS: automatic
+
 jobs:
+
   detect:
     name: Detect project state
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
     outputs:
-      has-pyproject: ${{ steps.check.outputs.has-pyproject }}
-      has-django:    ${{ steps.check.outputs.has-django }}
-      has-uvlock:    ${{ steps.check.outputs.has-uvlock }}
+      tier: ${{ steps.state.outputs.tier }}
+      locked: ${{ steps.state.outputs.locked }}
     steps:
-      - uses: actions/checkout@v7
-      - name: Check for project files
-        id: check
-        run: |
-          echo "──────────────────────────────────────────"
-          echo "  Detecting project state..."
-          echo "──────────────────────────────────────────"
-          if [ -f "pyproject.toml" ]; then
-            echo "has-pyproject=true"  >> "$GITHUB_OUTPUT"
-            echo "✅ pyproject.toml found"
-          else
-            echo "has-pyproject=false" >> "$GITHUB_OUTPUT"
-            echo "ℹ️  No pyproject.toml — Tier 1: all checks skipped"
-          fi
-          if [ -f "manage.py" ]; then
-            echo "has-django=true"  >> "$GITHUB_OUTPUT"
-            echo "✅ manage.py found — Tier 3: full CI active"
-          else
-            echo "has-django=false" >> "$GITHUB_OUTPUT"
-            echo "ℹ️  No manage.py — Tier 2: pre-Django CI only"
-          fi
-          if [ -f "uv.lock" ]; then
-            echo "has-uvlock=true"  >> "$GITHUB_OUTPUT"
-            echo "✅ uv.lock found"
-          else
-            echo "has-uvlock=false" >> "$GITHUB_OUTPUT"
-            echo "ℹ️  No uv.lock"
-          fi
-          echo ""
-          echo "Summary:"
-          echo "  pyproject.toml : $([ -f pyproject.toml ] && echo 'YES' || echo 'NO')"
-          echo "  manage.py      : $([ -f manage.py      ] && echo 'YES' || echo 'NO')"
-          echo "  uv.lock        : $([ -f uv.lock        ] && echo 'YES' || echo 'NO')"
-  lint:
-    name: "Lint (Ruff)"
-    runs-on: ubuntu-latest
-    needs: detect
-    if: needs.detect.outputs.has-pyproject == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
-      - name: Install dependencies
+          persist-credentials: false
+
+      - name: Detect tier
+        id: state
         run: |
-          if [ "${{ needs.detect.outputs.has-uvlock }}" == "true" ]; then
-            uv sync --frozen
+          locked=false; [ -f uv.lock ] && locked=true
+          if [ -f manage.py ]; then
+            if [ "$locked" != "true" ]; then
+              echo "::error::manage.py found but uv.lock is missing — run 'uv lock' and commit uv.lock."
+              exit 1
+            fi
+            tier=3; label="Django project — full CI"
+          elif [ -f pyproject.toml ]; then
+            tier=2; label="pre-Django — pre-commit + pip-audit"
           else
-            uv sync
+            tier=1; label="fresh template — pre-commit + scaffolded prod-image test"
           fi
-      - name: Ruff check
-        run: uv run ruff check .
-      - name: Ruff format check
-        run: uv run ruff format --check .
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          echo "locked=$locked" >> "$GITHUB_OUTPUT"
+          echo "### Tier ${tier}: ${label}" >> "$GITHUB_STEP_SUMMARY"
+
+  pre-commit:
+    name: pre-commit
+    needs: detect
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      # Same hooks as the local git hooks: ruff (lint + format), django-upgrade,
+      # file hygiene. One source of truth for code style.
+      - name: Run all hooks
+        run: uvx pre-commit run --all-files --show-diff-on-failure --color=always
+
   typecheck:
-    name: "Type check (mypy)"
-    runs-on: ubuntu-latest
+    name: mypy
     needs: detect
-    if: needs.detect.outputs.has-pyproject == 'true'
+    if: needs.detect.outputs.tier == '3'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
       - name: Install dependencies
-        run: |
-          if [ "${{ needs.detect.outputs.has-uvlock }}" == "true" ]; then
-            uv sync --frozen
-          else
-            uv sync
-          fi
+        run: uv sync --locked
       - name: mypy
-        run: |
-          if [ "${{ needs.detect.outputs.has-django }}" == "true" ]; then
-            uv run mypy .
-          else
-            echo "ℹ️  No manage.py — running mypy in stub mode (no Django stubs)"
-            uv run mypy . --ignore-missing-imports || true
-          fi
+        run: uv run mypy .
+
   test:
-    name: "Tests (pytest)"
-    runs-on: ubuntu-latest
-    needs: [detect, lint]
-    if: >
-      needs.detect.outputs.has-django == 'true' &&
-      needs.lint.result == 'success'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
-      - name: Install dependencies
-        run: uv sync --frozen
-      - name: Run pytest
+    name: pytest
+    needs: detect
+    if: needs.detect.outputs.tier == '3'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    services:
+      # Same image as the dev stack (docker-compose.yml) — bump both together.
+      postgres:
+        image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
         env:
-          DJANGO_SETTINGS_MODULE: config.settings.testing
-          SECRET_KEY: "ci-test-placeholder-key-not-real-50chars!!!!!"
-          DATABASE_URL: sqlite:////tmp/test.db
-        run: uv run pytest --cov --cov-report=xml -q
-      - name: Upload coverage
-        uses: codecov/codecov-action@v7
-        if: always()
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-  django-check:
-    name: "Django system check"
-    runs-on: ubuntu-latest
-    needs: [detect, test]
-    if: needs.detect.outputs.has-django == 'true'
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DJANGO_SETTINGS_MODULE: config.settings.production
-      SECRET_KEY: "ci-deploy-check-placeholder-key-not-real-50chars!!"
-      DATABASE_URL: sqlite:////tmp/check.db
-      ALLOWED_HOSTS: "localhost"
-      DEBUG: "False"
+      DJANGO_SETTINGS_MODULE: config.settings.testing
+      SECRET_KEY: ci-test-only-not-a-real-secret-key-0123456789abcdef
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
       - name: Install dependencies
-        run: uv sync --frozen
-      - name: Django deploy check
-        run: uv run python manage.py check --deploy
-  security:
-    name: "Security · pip-audit + Trivy"
-    runs-on: ubuntu-latest
-    needs: [detect, lint]
-    if: needs.detect.outputs.has-pyproject == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          enable-cache: ${{ needs.detect.outputs.has-uvlock == 'true' }}
-      - name: Install dependencies
+        run: uv sync --locked
+      - name: pytest
+        # Exit code 5 = no tests collected yet (brand-new project) — not a failure.
         run: |
-          if [ "${{ needs.detect.outputs.has-uvlock }}" == "true" ]; then
-            uv sync --frozen
-          elif [ "${{ needs.detect.outputs.has-django }}" == "false" ]; then
-            uv sync
-          else
-            echo "❌ Django project detected but uv.lock is missing."
-            echo "   Run: uv lock — then commit uv.lock before pushing."
-            exit 1
-          fi
-      - name: pip-audit
-        run: uv run pip-audit --skip-editable --ignore-vuln GHSA-5239-wwwm-4pmq
-      - name: Trivy Dockerfile scan
-        if: needs.detect.outputs.has-django == 'true'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: config
-          scan-ref:  docker/Dockerfile.prod
-          severity:  CRITICAL,HIGH
-          exit-code: "1"
-  ci-passed:
-    name: CI Passed ✅
-    runs-on: ubuntu-latest
-    needs: [detect, lint, typecheck, test, django-check, security]
-    if: always()
-    steps:
-      - name: Evaluate results
-        run: |
-          echo "──────────────────────────────────────────"
-          echo "  CI Gate — evaluating job results"
-          echo "──────────────────────────────────────────"
-          if [[ "${{ needs.detect.outputs.has-pyproject }}" == "false" ]]; then
-            echo "ℹ️  Tier 1: No project detected — all checks skipped"
-            echo "   Open the repo in VS Code → 'Reopen in Container'"
-            echo "   then follow the getting-started guide in the terminal."
+          rc=0
+          uv run pytest --cov --cov-report=xml -q || rc=$?
+          if [ "$rc" -eq 5 ]; then
+            echo "::notice::No tests collected yet — add tests under the apps' tests/ packages."
             exit 0
           fi
-          if [[ "${{ needs.detect.outputs.has-django }}" == "false" ]]; then
-            echo "ℹ️  Tier 2: Pre-Django state"
-            echo "   Active: lint, typecheck (stub), security (pip-audit)"
-            echo "   Skipped: test, django-check, Trivy"
-          else
-            echo "✅ Tier 3: Full Django project"
-            echo "   All checks active"
+          exit "$rc"
+      - name: Upload coverage
+        # Optional: runs only when the CODECOV_TOKEN secret is configured.
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./coverage.xml
+          token: ${{ env.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  django-check:
+    name: Django deploy check
+    needs: detect
+    if: needs.detect.outputs.tier == '3'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      SECRET_KEY: ci-deploy-check-only-not-a-real-secret-key-0123456789
+      DATABASE_URL: sqlite:////tmp/check.db
+      ALLOWED_HOSTS: localhost
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --no-dev
+      - name: manage.py check --deploy
+        run: uv run --no-sync python manage.py check --deploy
+      - name: No missing migrations
+        run: uv run --no-sync python manage.py makemigrations --check --dry-run
+
+  security:
+    name: pip-audit
+    needs: detect
+    if: needs.detect.outputs.tier != '1'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      LOCKED: ${{ needs.detect.outputs.locked }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      # Audits the exact pinned set (incl. transitive deps) without installing it.
+      - name: Audit dependencies
+        run: |
+          flag=""; [ "$LOCKED" = "true" ] && flag="--locked"
+          uv export $flag --no-emit-project --no-hashes --format requirements-txt -o /tmp/requirements.txt
+          uvx pip-audit --disable-pip --no-deps --strict -r /tmp/requirements.txt
+
+  prod-image:
+    name: Production image
+    needs: detect
+    if: needs.detect.outputs.tier != '2'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    env:
+      TIER: ${{ needs.detect.outputs.tier }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        if: env.TIER == '1'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Fresh template: follow the documented steps 1–4 to get a real project.
+      - name: Scaffold a sample project (fresh template)
+        if: env.TIER == '1'
+        run: |
+          uv init --bare --name sample-project
+          uv add django djangorestframework 'psycopg[binary,pool]' dj-database-url \
+                 redis celery django-celery-beat gunicorn whitenoise
+          uv add --dev pytest pytest-django pytest-cov factory-boy faker \
+                       mypy django-stubs celery-types pip-audit ipython
+          bash scripts/init-django.sh
+
+      # The generated project must pass the same checks a real project gets.
+      - name: Check the scaffolded project
+        if: env.TIER == '1'
+        env:
+          SECRET_KEY: ci-scaffold-check-only-not-a-real-secret-key-0123456789
+          ALLOWED_HOSTS: localhost
+        run: |
+          uvx ruff check . && uvx ruff format --check .
+          uv run mypy .
+          rc=0; uv run pytest -q || rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 5 ]
+          uv run python manage.py makemigrations --check --dry-run
+          DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py check --deploy
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build docker/Dockerfile.prod
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile.prod
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: project:ci
+          cache-from: type=gha,scope=prod-image
+          cache-to: type=gha,scope=prod-image,mode=max
+
+      - name: Smoke test — migrate, /healthz, Gunicorn, security headers
+        run: |
+          docker run -d --name app -p 8080:8080 \
+            -e SECRET_KEY=ci-smoke-only-not-a-real-secret-key-0123456789 \
+            -e DATABASE_URL=sqlite:////tmp/smoke.db \
+            -e ALLOWED_HOSTS=example.com \
+            project:ci
+          # A platform probe: internal Host, plain HTTP, SSL redirect ON.
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: 10.0.0.7:8080' http://localhost:8080/healthz || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          if [ "$code" != 200 ]; then
+            echo "❌ /healthz did not answer 200 (last: ${code})"; docker logs app; exit 1
           fi
-          echo ""
-          FAILED=0
-          check_job() {
-            local name="$1"
-            local result="$2"
-            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
-              echo "❌ $name: $result"
-              FAILED=1
-            elif [[ "$result" == "skipped" ]]; then
-              echo "⏭  $name: skipped (not applicable at current tier)"
-            else
-              echo "✅ $name: $result"
-            fi
-          }
-          check_job "lint"         "${{ needs.lint.result }}"
-          check_job "typecheck"    "${{ needs.typecheck.result }}"
-          check_job "test"         "${{ needs.test.result }}"
-          check_job "django-check" "${{ needs.django-check.result }}"
-          check_job "security"     "${{ needs.security.result }}"
-          echo ""
-          if [[ "$FAILED" == "1" ]]; then
-            echo "❌ CI gate FAILED — see failed jobs above"
+          echo "✅ /healthz → 200 for a platform probe"
+          # A real request through the proxy: Django serves it with the CSP header.
+          headers=$(curl -s -D - -o /dev/null -H 'Host: example.com' -H 'X-Forwarded-Proto: https' http://localhost:8080/admin/login/)
+          grep -q '^HTTP/[0-9.]* 200' <<<"$headers" || { echo "❌ /admin/login/ did not return 200"; echo "$headers"; exit 1; }
+          grep -qi '^content-security-policy' <<<"$headers" || { echo "❌ no CSP header"; exit 1; }
+          echo "✅ /admin/login/ → 200 with a Content-Security-Policy header"
+          docker exec app whoami | grep -qx app && echo "✅ runs as non-root user app (1001)"
+
+  ci:
+    name: CI
+    needs: [detect, pre-commit, typecheck, test, django-check, security, prod-image]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"' | tee -a "$GITHUB_STEP_SUMMARY"
+          # Skipped jobs are not applicable at the current tier — only failures count.
+          if echo "$RESULTS" | jq -e 'any(.[]; .result == "failure" or .result == "cancelled")' >/dev/null; then
+            echo "❌ CI gate failed"
             exit 1
           fi
-          echo "✅ CI gate PASSED"
+          echo "✅ CI gate passed"

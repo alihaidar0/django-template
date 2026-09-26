@@ -1,76 +1,89 @@
 # ============================================================
 #  .github/workflows/dockerhub-description.yml
 #
-#  Syncs README.md to the Docker Hub repository description.
+#  Syncs README.md (and the repo "About" description) to the Docker Hub
+#  page of this project's production image:
+#    docker.io/<DOCKERHUB_USERNAME>/<repo-name>
 #
 #  Triggers:
-#    - Push to main where README.md changed      → updates Docker Hub if image exists
-#    - PR targeting main where README.md changed → updates Docker Hub if image exists
-#    - Manual dispatch                           → updates Docker Hub if image exists
+#    - Push to main where README.md changed → updates Docker Hub if the image exists
+#    - Manual dispatch                      → same
 #
-#  Behaviour:
-#    - Checks if the image exists on Docker Hub before updating
-#    - Skips silently (no error) if the image does not exist yet
+#  Skips cleanly while the DOCKERHUB_USERNAME variable is unset or the
+#  image hasn't been published yet (e.g. in the template repo itself).
+#  No PR trigger: unmerged docs never reach Docker Hub.
 #
-#  Required GitHub Secrets:
-#    DOCKERHUB_USERNAME   Docker Hub username
-#    DOCKERHUB_TOKEN      Docker Hub access token (Read/Write)
+#  Required configuration:
+#    Variable  DOCKERHUB_USERNAME   Docker Hub namespace
+#    Secret    DOCKERHUB_TOKEN      Docker Hub access token (Read & Write)
 # ============================================================
+
 name: Docker Hub description
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - "README.md"
-  pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - "README.md"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-description
+  cancel-in-progress: false
+
 jobs:
   update-description:
     name: Update Docker Hub description
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      REPO_NAME: ${{ github.event.repository.name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: README.md
+          persist-credentials: false
 
-      - name: Check image exists on Docker Hub
+      - name: Does the image exist on Docker Hub?
         id: check
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://hub.docker.com/v2/repositories/${{ secrets.DOCKERHUB_USERNAME }}/django-template/)
-          if [ "$STATUS" = "200" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
+          repo="${DOCKERHUB_USERNAME}/${REPO_NAME,,}"
+          echo "repository=${repo}" >> "$GITHUB_OUTPUT"
+          if [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          status=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/${repo}/")
+          if [ "$status" = "200" ]; then echo "exists=true"; else echo "exists=false"; fi >> "$GITHUB_OUTPUT"
 
       - name: Update Docker Hub description
+        id: update
         if: steps.check.outputs.exists == 'true'
-        uses: peter-evans/dockerhub-description@v5
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ secrets.DOCKERHUB_USERNAME }}/django-template
+          repository: ${{ steps.check.outputs.repository }}
           readme-filepath: ./README.md
+          short-description: ${{ github.event.repository.description }}
 
       - name: Write job summary
         if: always()
+        env:
+          REPOSITORY: ${{ steps.check.outputs.repository }}
+          EXISTS: ${{ steps.check.outputs.exists }}
+          UPDATED: ${{ steps.update.outcome == 'success' }}
         run: |
-          echo "## 📄 Docker Hub Description Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Triggered by** | \`${{ github.event_name }}\` on \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Image exists** | \`${{ steps.check.outputs.exists }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Docker Hub updated** | \`${{ steps.check.outputs.exists }}\` |" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 📄 Docker Hub Description Summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| **Repository** | \`${REPOSITORY}\` |"
+            echo "| **Image exists** | \`${EXISTS}\` |"
+            echo "| **Docker Hub updated** | \`${UPDATED}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
