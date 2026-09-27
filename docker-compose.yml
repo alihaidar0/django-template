@@ -15,7 +15,11 @@
 #  project gets its own containers, network and volumes.
 #
 #  Git inside the container: VS Code Dev Containers forwards the host
-#  ssh-agent and copies ~/.gitconfig automatically — no key mounts.
+#  ssh-agent (the keys) and copies ~/.gitconfig. The host ~/.ssh is also
+#  mounted read-only into `app`; post-create.sh copies its config,
+#  known_hosts and *.pub files, so host aliases such as
+#  `Host github.com-work` resolve the same way as on the host. Private
+#  keys are never copied — they stay in the host's agent.
 #
 #  The project's .venv lives in a named volume (Linux filesystem), not in
 #  the bind-mounted folder: installs and imports stay fast even when the
@@ -39,12 +43,14 @@ x-dev-image: &dev-image
     SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
     DEBUG: ${DEBUG:-True}
     ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
-    DATABASE_URL: postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}
-    REDIS_URL: redis://redis:6379/0
-    CELERY_BROKER_URL: redis://redis:6379/1
-    CELERY_RESULT_BACKEND: redis://redis:6379/2
-    EMAIL_HOST: mailpit
-    EMAIL_PORT: "1025"
+    # `environment` wins over `env_file`, so every value keeps a ${VAR:-default}
+    # form — setting it in .env (e.g. an external Neon DATABASE_URL) takes effect.
+    DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}}
+    REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+    CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+    EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+    EMAIL_PORT: ${EMAIL_PORT:-1025}
   volumes:
     - .:/workspace:cached
     - venv:/workspace/.venv
@@ -67,6 +73,9 @@ services:
       - venv:/workspace/.venv
       - uv-cache:/home/dev/.cache/uv
       - shell-history:/home/dev/.shell_history
+      # Host SSH settings (read-only) — see the header and scripts/post-create.sh.
+      # USERPROFILE on Windows, HOME on macOS/Linux.
+      - ${USERPROFILE:-${HOME}}/.ssh:/home/dev/.ssh-host:ro
     ports:
       - "127.0.0.1:8000:8000"   # Django dev server
       - "127.0.0.1:5555:5555"   # Flower
