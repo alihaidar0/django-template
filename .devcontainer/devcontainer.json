@@ -25,6 +25,8 @@
   "customizations": {
     "vscode": {
       "extensions": [
+        // AI pair programming, installed inside the container
+        "anthropic.claude-code",
         // Python
         "ms-python.python",
         "ms-python.vscode-pylance",
@@ -35,10 +37,11 @@
         "batisteo.vscode-django",
         // Containers
         "ms-azuretools.vscode-containers",
-        // Git
+        // Git / GitHub
         "eamodio.gitlens",
         "mhutchie.git-graph",
         "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
         // Database / API
         "cweijan.vscode-postgresql-client2",
         "humao.rest-client",
@@ -47,9 +50,11 @@
         "davidanson.vscode-markdownlint",
         "timonwong.shellcheck",
         "exiasr.hadolint",
+        "redhat.vscode-yaml",
         // Utilities
         "tamasfe.even-better-toml",
-        "editorconfig.editorconfig"
+        "editorconfig.editorconfig",
+        "usernamehw.errorlens"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
@@ -64,6 +69,16 @@
         // The project's mypy (from `uv add --dev mypy django-stubs`) and its config.
         "mypy-type-checker.importStrategy": "fromEnvironment",
         "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],
+        // Test Explorer runs pytest with the [tool.pytest.ini_options] from pyproject.toml.
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        // The image already puts /workspace/.venv/bin first on PATH — no activation.
+        "python.terminal.activateEnvironment": false,
+        // Django templates: HTML language features + Emmet in *.html.
+        "files.associations": { "**/templates/**/*.html": "django-html" },
+        "emmet.includeLanguages": { "django-html": "html" },
+        // Same line endings as .gitattributes, also for files created on Windows.
+        "files.eol": "\n",
         "terminal.integrated.defaultProfile.linux": "bash",
         "files.watcherExclude": {
           "**/.git/objects/**": true,

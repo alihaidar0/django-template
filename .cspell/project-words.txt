@@ -21,8 +21,10 @@ humao
 mhutchie
 tamasfe
 timonwong
+usernamehw
 
 # Tools, services, standards
+errorlens
 ghaction
 healthz
 Mailpit
@@ -32,6 +34,7 @@ pyupgrade
 SARIF
 Sigstore
 tini
+winget
 zizmor
 zizmorcore
 
@@ -55,6 +58,7 @@ maxmemory
 noinput
 noreload
 publickey
+sslmode
 PYTHONDONTWRITEBYTECODE
 PYTHONUNBUFFERED
 USERPROFILE

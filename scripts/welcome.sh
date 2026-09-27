@@ -73,6 +73,10 @@ else
         "python manage.py runserver 0.0.0.0:8000"
 fi
 
+step "Committing from the host too, not just this container?" \
+    "The same git hooks run there — install pre-commit + uv on the host once," \
+    "or a host commit stops with \"pre-commit not found\" (README → Git and SSH)."
+
 echo ""
 echo "  📖  https://github.com/alihaidar0/django-template#readme"
 echo "$RULE"

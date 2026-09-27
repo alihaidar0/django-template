@@ -55,7 +55,7 @@ django-template ──(Use this template)──▶ your project: app · celery �
 | --- | --- |
 | [Docker Desktop](https://docs.docker.com/get-docker/) | Runs the dev stack |
 | [VS Code](https://code.visualstudio.com/) + **Dev Containers** extension (`ms-vscode-remote.remote-containers`) | Opens the project inside the container |
-| An SSH key loaded in your **host** ssh-agent | `git push` from inside the container (the agent is forwarded — keys never enter the container) |
+| An SSH key loaded in your **host** ssh-agent | `git push` from inside the container — see [Git and SSH](#git-and-ssh) |
 
 No Python, Node.js, or database on your machine.
 
@@ -113,9 +113,22 @@ dependencies exist.
 | `production.py` | HTTPS behind a proxy, secure cookies, Django 6 **Content Security Policy** (report-only until tuned) |
 | WhiteNoise | static files served by Gunicorn with hashed, cacheable names |
 | `config/health.py` | `GET /healthz` for Cloud Run / Kubernetes probes (answers before host checks) |
+| `users/` app | Custom user model (`AUTH_USER_MODEL = "users.User"`), with its first migration already generated — Django's own docs call swapping it in later "a substantial task" |
 | `config/celery.py` | Celery app (`celery -A config`), `django-celery-beat` scheduler |
 | logging | everything to stdout, level via `LOG_LEVEL` |
 | `pyproject.toml` | ruff rules (incl. bugbear, bandit, Django), **mypy strict** with django-stubs, pytest-django, coverage |
+
+**Want fields on `User` before the database exists?** Step 4 already generates
+`users/migrations/0001_initial.py`, so step 6's `migrate` has something to apply — Django's own docs call adding
+`AUTH_USER_MODEL` after that first migration "a substantial task". Before running step 6, edit `users/models.py`,
+then regenerate that one migration so it already contains your fields:
+
+```bash
+rm users/migrations/0001_initial.py
+python manage.py makemigrations users
+```
+
+Fields added after step 6 don't need this — that's just a normal follow-up migration.
 
 The generated project passes ruff, mypy strict, `makemigrations --check` and
 `check --deploy` out of the box — CI runs this same script on every push to
@@ -188,6 +201,39 @@ Details — branch rules, required checks, release tags — in
 Hook versions are bumped weekly by Dependabot. Run all hooks with
 `pre-commit run --all-files`.
 
+### Git and SSH
+
+Commit and push from the container terminal or from your host — both use the
+same repository and the same keys.
+
+- **Keys**: VS Code forwards your host's ssh-agent into the container. Private
+  keys never enter the container.
+- **SSH settings**: `docker-compose.yml` mounts your host `~/.ssh` read-only;
+  on container creation `scripts/post-create.sh` copies `config`,
+  `known_hosts` and the `*.pub` files into the container. Host aliases work the
+  same inside, e.g. for several GitHub accounts:
+
+  ```text
+  Host github.com-work
+      HostName github.com
+      User git
+      IdentityFile ~/.ssh/id_ed25519_work
+      IdentitiesOnly yes
+  ```
+
+  with the remote `git@github.com-work:<owner>/<repo>.git`. The copied `.pub`
+  file lets `IdentitiesOnly` pick the matching key from the forwarded agent.
+  After changing `~/.ssh/config` on the host, **Rebuild Container**.
+- **Identity**: VS Code copies your host `~/.gitconfig`. For a per-project
+  identity, set it in the repository — it lives in `.git/config`, so the host
+  and the container both use it:
+  `git config user.email you@example.com`.
+- **Committing from the host**: the hooks installed by `pre-commit install`
+  also run for commits made on the host, so the host needs `pre-commit` on
+  `PATH` too — e.g. `uv tool install pre-commit` (Windows:
+  `winget install astral-sh.uv` first). Without it, host commits stop with
+  "`pre-commit` not found".
+
 ---
 
 ## CI
@@ -253,7 +299,7 @@ the one your project needs.
 ├── docker/Dockerfile.prod            # production image
 ├── scripts/
 │   ├── init-django.sh                # step 4: scaffold config/ + settings + Celery + tool config
-│   ├── post-create.sh                # container created: .venv volume owner, uv sync, hooks
+│   ├── post-create.sh                # container created: SSH settings, .venv volume owner, uv sync, hooks
 │   ├── entrypoint.prod.sh            # migrate → Gunicorn
 │   └── welcome.sh                    # next-steps banner on container start
 ├── .env.example · .dockerignore · .gitignore · .gitattributes · .editorconfig
@@ -270,7 +316,8 @@ the one your project needs.
 ### `git push` fails inside the container — Permission denied (publickey)
 
 The container uses your **host's** ssh-agent. On the host, check `ssh-add -l`
-lists your key. On Windows (PowerShell as Administrator), once:
+lists your key (`post-create.sh` also warns when the container sees no keys).
+On Windows (PowerShell as Administrator), once:
 
 ```powershell
 Get-Service ssh-agent | Set-Service -StartupType Automatic
@@ -279,6 +326,10 @@ ssh-add $env:USERPROFILE\.ssh\id_ed25519
 ```
 
 Then **Rebuild / Reopen in Container**.
+
+`Could not resolve hostname github.com-…` means the host alias is missing in
+the container: check it is in the host `~/.ssh/config`, then **Rebuild
+Container** (the settings are copied on creation).
 
 ### Upgrading an older project (root-based dev image)
 

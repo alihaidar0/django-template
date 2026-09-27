@@ -12,6 +12,7 @@
 #    config/settings/testing.py      fast hashing    (pytest / CI)
 #    config/celery.py                Celery app      (`celery -A config`)
 #    config/health.py                GET /healthz for platform probes
+#    users/                          custom user model (AUTH_USER_MODEL), from the first migration
 #    pyproject.toml                  ruff · mypy (django-stubs) · pytest · coverage
 #
 #  Settings read the environment that docker-compose.yml / .env provide:
@@ -76,7 +77,14 @@ DATABASES = {
 INSTALLED_APPS += [
     "rest_framework",
     "django_celery_beat",
+    "users",
 ]
+
+# A custom user model, in place from the first migration (users/models.py).
+# Django's own docs call swapping AUTH_USER_MODEL in later "a substantial
+# task" — a from-scratch migration history plus a data migration for every
+# existing user — so this exists even though it changes nothing yet.
+AUTH_USER_MODEL = "users.User"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -184,6 +192,46 @@ if ! grep -q "config.settings.development" manage.py; then
     exit 1
 fi
 
+echo "▶ Scaffolding a custom user model (users/) — see AUTH_USER_MODEL in settings"
+mkdir -p users/migrations
+: > users/__init__.py
+: > users/migrations/__init__.py
+
+cat > users/apps.py << 'PY'
+from django.apps import AppConfig
+
+
+class UsersConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "users"
+PY
+
+cat > users/models.py << 'PY'
+from django.contrib.auth.models import AbstractUser
+
+
+class User(AbstractUser):
+    """The project's user model.
+
+    Swapping ``AUTH_USER_MODEL`` after the first migration means recreating
+    every migration that touches it and writing a data migration for existing
+    users, so this exists from the start even though it adds nothing yet —
+    add project-specific fields here.
+    """
+PY
+
+cat > users/admin.py << 'PY'
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+
+from .models import User
+
+admin.site.register(User, UserAdmin)
+PY
+
+echo "▶ Generating the initial migration for users"
+uv run python manage.py makemigrations users
+
 echo "▶ Wiring Celery (config/celery.py)"
 cat > config/celery.py << 'PY'
 import os
@@ -253,6 +301,12 @@ strict = true
 plugins = ["mypy_django_plugin.main"]
 exclude = ['^\.venv/', '/migrations/']
 
+# django-stubs resolves the whole app registry for AUTH_USER_MODEL (users.User);
+# django-celery-beat ships no type stubs / py.typed marker, so it's untyped either way.
+[[tool.mypy.overrides]]
+module = "django_celery_beat.*"
+ignore_missing_imports = true
+
 [tool.django-stubs]
 django_settings_module = "config.settings.development"
 
@@ -274,11 +328,12 @@ fi
 echo "▶ Formatting the generated code (ruff, same style as the pre-commit hook)"
 # startproject writes single quotes; format now so the first commit is clean.
 if command -v ruff >/dev/null 2>&1; then ruff_cmd=(ruff); else ruff_cmd=(uvx ruff); fi
-"${ruff_cmd[@]}" format --quiet manage.py config
-"${ruff_cmd[@]}" check --quiet --fix manage.py config
+"${ruff_cmd[@]}" format --quiet manage.py config users
+"${ruff_cmd[@]}" check --quiet --fix manage.py config users
 
 echo ""
 echo "✅ Django project initialised."
 echo "   Next: pre-commit install · python manage.py migrate · python manage.py runserver 0.0.0.0:8000"
 echo "   Health check: GET /healthz · settings: config/settings/ · tool config: pyproject.toml"
+echo "   Custom user model: users/models.py (AUTH_USER_MODEL = \"users.User\")"
 echo "   Then enable the commented 'uv' ecosystem in .github/dependabot.yml."
