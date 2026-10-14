@@ -24,6 +24,7 @@ timonwong
 usernamehw
 
 # Tools, services, standards
+autonumber
 errorlens
 ghaction
 healthz
@@ -34,6 +35,7 @@ pgsql
 pytype
 pyupgrade
 SARIF
+Schemathesis
 Sigstore
 spectacular
 stoplight
