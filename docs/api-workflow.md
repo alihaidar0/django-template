@@ -6,7 +6,8 @@ contract**, not through chat: `openapi/schema.yaml`, an OpenAPI file that is **g
 the code and committed**. Nobody edits it by hand.
 
 The workflow is contract-first and deliberately light: one issue form, one generated file,
-three automatic checks. It switches on by itself the first time a project commits
+three automatic checks. How two developers (backend and client) talk to each other, with
+diagrams, is in [`api-collaboration.md`](api-collaboration.md). It switches on by itself the first time a project commits
 `openapi/schema.yaml`; until then nothing in CI changes.
 
 ## The loop
@@ -28,8 +29,9 @@ request issue ─▶ agree the shape ─▶ implement + regenerate ─▶ pull r
 4. **CI gates** (below) must pass before the merge.
 5. **Close the loop.** Comment on the issue with a short summary of what was built (path,
    fields, error cases, any difference from the request) and close it.
-6. **The client adopts.** The consumer reads `openapi/schema.yaml` at the merged commit (or
-   the release tag), generates or updates its client from it and builds against it.
+6. **The client adopts.** The consumer pins the contract of a release (the `openapi.yaml` asset
+   of the release tag), generates or updates its client from it and builds against it; see
+   [`consuming-the-api.md`](consuming-the-api.md).
 
 ## Who does what
 

@@ -121,12 +121,27 @@ jobs:
           if [[ "$version" == *-* ]]; then
             flags=(--prerelease)
           fi
+
+          # The API contract travels with the release, so a client developer pins a tagged,
+          # immutable file instead of copying one from a commit. Assets must be attached
+          # when the release is created (release immutability forbids adding them later).
+          # A project without openapi/schema.yaml simply has no asset.
+          assets=()
+          if [[ -f openapi/schema.yaml ]]; then
+            cp openapi/schema.yaml "$RUNNER_TEMP/openapi.yaml"
+            assets+=("$RUNNER_TEMP/openapi.yaml#OpenAPI contract (openapi.yaml)")
+          fi
+
           gh release create "$tag" \
             --target "$TARGET_SHA" \
             --title "$tag" \
             --generate-notes \
-            "${flags[@]}"
+            "${flags[@]}" \
+            "${assets[@]}"
           echo "Published release $tag" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${#assets[@]}" -gt 0 ]]; then
+            echo "Attached the API contract as openapi.yaml." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           # Publishes the semver image tags (X.Y.Z and X.Y), but only for a project
           # that opted in to publishing (repository variable PUBLISH_IMAGE).
