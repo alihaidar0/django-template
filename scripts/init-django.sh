@@ -303,7 +303,8 @@ ignore = ["E501"]  # line length is the formatter's job
 "**/test_*.py" = ["S101", "S106"]
 
 [tool.mypy]
-python_version = "3.14"
+# No python_version: mypy checks against the interpreter it runs in (the project's own),
+# which follows the newest Python minor Django supports; nothing to keep in sync.
 strict = true
 plugins = ["mypy_django_plugin.main"]
 exclude = ['^\.venv/', '/migrations/']
