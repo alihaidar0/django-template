@@ -155,7 +155,7 @@ from .base import *
 DEBUG = False
 SECRET_KEY = os.environ["SECRET_KEY"]  # required — fail fast if missing
 
-# Behind a TLS-terminating proxy / load balancer (Cloud Run, etc.)
+# Behind a TLS-terminating proxy / load balancer
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True").lower() in {"1", "true", "yes", "on"}
 SESSION_COOKIE_SECURE = True
@@ -268,7 +268,7 @@ from django.http import HttpRequest, HttpResponse
 class HealthCheckMiddleware:
     """Answer ``GET /healthz`` with 200 before any other middleware runs.
 
-    Platforms (Cloud Run, Kubernetes, load balancers) probe the container by IP
+    Platforms (orchestrators, load balancers) probe the container by IP
     or an internal hostname over plain HTTP; running first means those probes are
     not rejected by ALLOWED_HOSTS or redirected to HTTPS. It checks that the
     process serves requests (liveness) — add a readiness view for dependencies.

@@ -48,7 +48,7 @@ x-dev-image: &dev-image
     DEBUG: ${DEBUG:-True}
     ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
     # `environment` wins over `env_file`, so every value keeps a ${VAR:-default}
-    # form — setting it in .env (e.g. an external Neon DATABASE_URL) takes effect.
+    # form — setting it in .env (e.g. an external DATABASE_URL) takes effect.
     DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-django}:${POSTGRES_PASSWORD:-django_pass}@db:5432/${POSTGRES_DB:-django_dev}}
     REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}

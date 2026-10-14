@@ -229,7 +229,7 @@ git switch -                            # back to your topic branch
 | `config/settings/{base,development,production,testing}.py` | settings split; configured from the environment (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `DATABASE_URL`, `CELERY_*`, `LOG_LEVEL` …) |
 | `production.py` | HTTPS behind a proxy, secure cookies, Django 6 **Content Security Policy** (report-only until tuned) |
 | WhiteNoise | static files served by Gunicorn with hashed, cacheable names |
-| `config/health.py` | `GET /healthz` for Cloud Run / Kubernetes probes (answers before host checks) |
+| `config/health.py` | `GET /healthz` for platform and load-balancer probes (answers before host checks) |
 | `users/` app | Custom user model (`AUTH_USER_MODEL = "users.User"`), with its first migration already generated — Django's own docs call swapping it in later "a substantial task" |
 | `config/celery.py` | Celery app (`celery -A config`), `django-celery-beat` scheduler |
 | logging | everything to stdout, level via `LOG_LEVEL` |
@@ -366,7 +366,8 @@ tab) stay empty: Dependabot pull requests cannot read Actions secrets, and the
 coverage upload simply skips itself there.
 
 **Environments** (Settings → Environments) are only needed once you add a
-deployment workflow (Cloud Run, GKE, …). Create one per target and keep the
+deployment workflow. Create one per target (each project deploys where it
+wants) and keep the
 credentials in the environment, not in repository secrets (a repository secret
 stays readable from any branch):
 
@@ -729,8 +730,11 @@ docker run --rm -p 8080:8080 \
   <DOCKERHUB_USERNAME>/<repo>:latest
 ```
 
-Deployment workflows (Cloud Run, GKE, …) are intentionally not included — add
-the one your project needs.
+Where a project deploys is its own choice, so the template ships no deployment
+workflow and assumes no host. Publishing the image to Docker Hub is optional
+(`docker.yml` skips itself until `DOCKERHUB_USERNAME` is set); use another
+registry by replacing that workflow, and add the deployment workflow your
+project needs.
 
 ### Dependabot
 

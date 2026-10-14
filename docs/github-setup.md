@@ -114,13 +114,14 @@ tab) stay empty: Dependabot pull requests cannot read Actions secrets, and the
 coverage upload simply skips itself there.
 
 **Environments** (Settings → Environments) are only needed once you add a
-deployment workflow (Cloud Run, GKE, …). Create one per target and keep the
+deployment workflow. Create one per target (each project deploys where it
+wants) and keep the
 credentials in the environment, not in repository secrets (a repository secret
 stays readable from any branch):
 
 | Environment | Deployment branches and tags | Protection | Holds |
 | --- | --- | --- | --- |
-| `production` | Selected branches → `main` only | Required reviewers (you or the team, once there is a second maintainer); Prevent self-review; Allow administrators to bypass **off** | the cloud credentials and project/region variables |
+| `production` | Selected branches → `main` only | Required reviewers (you or the team, once there is a second maintainer); Prevent self-review; Allow administrators to bypass **off** | the target's credentials and non-secret settings |
 | `staging` (optional) | Selected branches → `develop` | none | the staging credentials |
 
 Never commit a key, token or `.env` value; any file in the repository is

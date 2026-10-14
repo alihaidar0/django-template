@@ -3,7 +3,7 @@
 #  scripts/entrypoint.prod.sh — production container entrypoint
 #
 #  1. Applies database migrations (skip with RUN_MIGRATIONS=false —
-#     e.g. when a separate release job / Cloud Run Job migrates, so
+#     e.g. when a separate release job migrates, so
 #     parallel instances don't race each other).
 #  2. Starts the command (Gunicorn by default) as PID 1.
 #
