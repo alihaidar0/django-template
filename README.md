@@ -104,7 +104,9 @@ starts on **`develop`**, its default branch. Two workflows then run by
 themselves on the first commit:
 
 - **Bootstrap main** creates `main` from `develop`.
-- **Labels** creates every label from `.github/labels.yml`.
+- **Labels** creates every label from `.github/labels.yml` and deletes GitHub's five default
+  labels (`accessibility`, `help wanted`, `invalid`, `question`, `wontfix`), so the project has
+  exactly the labels in that file.
 
 Check **Actions** after a minute: both should be green. If one did not run,
 start it with *Actions → the workflow → Run workflow*.
@@ -696,7 +698,7 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | `ci.yml` → **CI passed** (required) | pull requests into `develop` and `main` | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs |
 | `lint.yml` | called by `ci.yml` | hadolint · ShellCheck · actionlint · zizmor · `docker compose config` · cspell · markdownlint |
 | `pr-labels.yml` | pull request opened/edited | labels from the Conventional Commit title |
-| `labels.yml` | push to `develop`/`main` touching `labels.yml` | labels as code (`gh`, nothing is deleted) |
+| `labels.yml` | push to `develop`/`main` touching `labels.yml` | labels as code (`gh`); removes GitHub's five default labels; a manual run with `prune` removes every label not in the file |
 | `bootstrap-main.yml` | push to `develop` (projects) | creates `main` once |
 | `docker.yml` | push to `main`, tags, dispatch | **opt-in** (`PUBLISH_IMAGE`): publishes + scans the production image |
 | `release.yml` | push to `main` | GitHub Release with generated notes |
@@ -767,7 +769,7 @@ Weekly (Monday 09:00 UTC), grouped, 7-day cooldown, every pull request into
 | Ecosystem | Scans |
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
-| `docker` | `docker/Dockerfile.prod` — python base + uv (tag + digest) |
+| `docker` | `docker/Dockerfile.prod` — python base (**patch updates only**, see [section 8](#8-versions-the-template-follows-the-newest-projects-freeze)) + uv (tag + digest) |
 | `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image** once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled by `scripts/init-django.sh` |
@@ -812,6 +814,18 @@ minor (the weekly *Image contract* run flags a Python minor that
 and a C toolchain for building wheels. Project tools (ruff, mypy, Celery,
 Flower, IPython) come from your `uv.lock`; run anything else ad hoc with
 `uvx`, e.g. `uvx pgcli`.
+
+**Python follows Django.** The production image (and CI) run the newest Python minor that
+Django officially supports, read from the version classifiers Django publishes on PyPI: not the
+newest Python released (Django 6.1 lists 3.12–3.14, so 3.15 is not used yet). The dev image
+follows the same rule. Dependabot therefore proposes only Python **patch** updates
+(`3.14.8` → `3.14.9`) for `docker/Dockerfile.prod`; a new minor, or a release candidate of one,
+never arrives as a pull request. When Django adds support for a newer minor and the dev image has
+moved, the weekly *Image contract* run turns red, and you move on purpose with one command:
+`bash scripts/set-python.sh` (it picks the newest minor Django supports, resolves the image tag
+and digest, and updates `docker/Dockerfile.prod`, `ci.yml` and the README badge; `--check`
+shows the change without making it). It refuses a minor that Django does not list. The generated
+project's mypy uses the interpreter it runs in, so no version is written into `pyproject.toml`.
 
 Every other pinned version (GitHub Actions, the production image's Python and
 uv, postgres/redis/mailpit, hook revisions) is tracked by Dependabot and
@@ -883,6 +897,7 @@ Celery containers; on your host the `.venv` folder stays empty.
 ├── scripts/
 │   ├── init-django.sh                # step 4: scaffold config/ + settings + Celery + tool config
 │   ├── pin-image.sh                  # freeze the dev image to python-X.Y.Z.R@sha256:…
+│   ├── set-python.sh                 # move the production image to the newest Python minor Django supports
 │   ├── init-readme.sh                # replace this guide with your project's README
 │   ├── post-create.sh                # container created: .venv volume owner, uv sync, git hooks
 │   ├── pin-ssh-key.sh                # every start: map the remote alias to github.com, pin this repo's SSH key
@@ -986,8 +1001,8 @@ The template is a project like any other: topic branch → pull request into
   variables* pages stay empty and `PUBLISH_IMAGE` stays unset. Registry credentials belong
   to each project, never to the template.
 - **Image contract:** the weekly *Image contract* run compares the template with
-  the dev image. A red run means the image or the template moved on; fix it
-  with a topic branch.
+  the dev image. A red run means the image or the template moved on (for example a new Python
+  minor in the dev image); fix it with a topic branch, using `bash scripts/set-python.sh` for Python.
 - **Releases:** each promotion to `main` that changes more than documentation
   publishes a calendar release (`vYYYY.MM.DD`) that projects record as their
   starting point.

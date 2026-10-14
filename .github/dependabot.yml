@@ -45,8 +45,16 @@ updates:
     assignees: ["alihaidar0"]
     commit-message: { prefix: "build", include: "scope" }
     labels: ["dependencies", "docker"]
+    # The production Python follows Django: the newest minor Django officially
+    # supports (see scripts/set-python.sh), not the newest Python released. Patch
+    # updates (3.14.8 -> 3.14.9) arrive here; a new minor, and any release
+    # candidate of one, is ignored and moved to on purpose with
+    # `bash scripts/set-python.sh`.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
-      # uv minor + patch grouped; every python bump arrives as its own PR.
+      # uv minor + patch grouped; every python patch bump arrives as its own PR.
       docker-minor-patch:
         applies-to: version-updates
         patterns: ["*"]
