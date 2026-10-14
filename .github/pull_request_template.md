@@ -9,6 +9,19 @@
 
 <!-- Commands run, tests added, screenshots, or sample output. -->
 
+## API changes
+
+<!-- Only when this pull request changes openapi/schema.yaml. Otherwise write "None". -->
+
+- Schema regenerated (`bash scripts/schema.sh generate`): yes / no
+- Breaking for clients: yes / no (a breaking change needs the `breaking change` label and the owner's approval; see `docs/api-workflow.md`)
+- Request issue: Closes #
+
+oasdiff changelog (paste it from the "API breaking changes" job summary):
+
+```text
+```
+
 ## Breaking changes
 
 - [ ] This change forces projects generated from the template to adapt (use a `feat!:` or `fix!:` title and a `BREAKING CHANGE:` footer; the `breaking change` label is added automatically)
