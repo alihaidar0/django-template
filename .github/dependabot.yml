@@ -4,15 +4,17 @@
 #   github-actions  .github/workflows/* — action SHA pins + "# vX.Y.Z" comments,
 #                   including the reusable docker/github-builder workflow
 #   docker          docker/Dockerfile.prod — FROM lines (python base + uv), tag + digest
-#   docker-compose  docker-compose.yml — postgres, redis, mailpit (tag + digest)
+#   docker-compose  docker-compose.yml — postgres, redis, mailpit (tag + digest) AND
+#                   the dev image: once `bash scripts/pin-image.sh` pinned it to
+#                   python-X.Y.Z.R@sha256:…, new image builds arrive as PRs
 #   pre-commit      .pre-commit-config.yaml — hook revs
-#   uv              pyproject.toml + uv.lock — ENABLE after `uv init` (block at the end)
+#   uv              pyproject.toml + uv.lock — enabled by scripts/init-django.sh
+#                   (block at the end; commented here so the template itself,
+#                   which has no pyproject.toml, doesn't fail every week)
 #
-# Branch model: every PR targets `develop`; releases reach `main` through the
-# develop → main PR. GitHub always opens *security* update PRs against the
-# default branch (target-branch doesn't apply to them), and main only accepts
-# PRs from develop — so the "Dependabot security updates" repository setting
-# stays OFF. Alerts stay on; these weekly version updates carry the fixes.
+# Branch model: `develop` is the default branch, so every PR — version AND
+# security updates — targets it; releases reach `main` through the
+# develop → main PR. Dependabot alerts and security updates can stay ON.
 #
 # Cooldown: a version update is proposed only once the release is 7 days old,
 # so a compromised or broken release is usually caught (and yanked) upstream
@@ -61,12 +63,18 @@ updates:
     assignees: ["alihaidar0"]
     commit-message: { prefix: "build", include: "scope" }
     labels: ["dependencies", "docker"]
+    # The dev image is followed to every newer build, minor and major included
+    # (a new Python minor arrives as its own PR). Read the image's release notes
+    # before merging one: the weekly Image contract run flags a Python minor
+    # that Dockerfile.prod and ci.yml do not share.
     groups:
       # Patch/minor together; a new PostgreSQL or Redis major arrives alone
       # (a Postgres major needs a dump/restore of the dev volume).
       compose-minor-patch:
         applies-to: version-updates
         patterns: ["*"]
+        # The dev image always arrives as its own PR.
+        exclude-patterns: ["alihaidar199527/django-devcontainer"]
         update-types: ["minor", "patch"]
     open-pull-requests-limit: 5
 
@@ -84,9 +92,9 @@ updates:
         patterns: ["*"]
     open-pull-requests-limit: 3
 
-  # ── Python dependencies — uncomment after `uv init` ──────────────────
+  # ── Python dependencies — enabled by scripts/init-django.sh ──────────
   # Left commented in the template itself: without pyproject.toml the job
-  # would fail every week. scripts/init-django.sh reminds you to enable it.
+  # would fail every week. scripts/init-django.sh uncomments it for you.
   #
   # - package-ecosystem: "uv"
   #   directory: "/"

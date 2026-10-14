@@ -44,6 +44,7 @@
         "github.vscode-pull-request-github",
         // Database / API
         "cweijan.vscode-postgresql-client2",
+        "cweijan.vscode-redis-client",
         "humao.rest-client",
         // Quality of the repo's own files (same checks as the Lint workflow)
         "streetsidesoftware.code-spell-checker",
@@ -53,6 +54,7 @@
         "redhat.vscode-yaml",
         // Utilities
         "tamasfe.even-better-toml",
+        "dotenv.dotenv-vscode",
         "editorconfig.editorconfig",
         "usernamehw.errorlens"
       ],
