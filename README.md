@@ -129,7 +129,7 @@ uv init --bare
 
 # 2. production dependencies
 uv add django djangorestframework "psycopg[binary,pool]" dj-database-url \
-       redis celery django-celery-beat gunicorn whitenoise
+       redis celery django-celery-beat gunicorn whitenoise drf-spectacular
 
 # 3. dev / test dependencies
 uv add --dev pytest pytest-django pytest-cov factory-boy faker \
@@ -242,6 +242,7 @@ git switch -                            # back to your topic branch
 | `config/health.py` | `GET /healthz` for platform and load-balancer probes (answers before host checks) |
 | `users/` app | Custom user model (`AUTH_USER_MODEL = "users.User"`), with its first migration already generated — Django's own docs call swapping it in later "a substantial task" |
 | `config/celery.py` | Celery app (`celery -A config`), `django-celery-beat` scheduler |
+| API contract | `drf-spectacular` settings (schema class, title, version; the schema is **not** served) and `scripts/schema.sh` to write and verify `openapi/schema.yaml`, the file an API client builds against |
 | logging | everything to stdout, level via `LOG_LEVEL` |
 | `pyproject.toml` | ruff rules (incl. bugbear, bandit, Django), **mypy strict** with django-stubs, pytest-django, coverage |
 | `.github/dependabot.yml` | the Python (`uv`) ecosystem is switched on |
@@ -898,6 +899,7 @@ Celery containers; on your host the `.venv` folder stays empty.
 │   ├── init-django.sh                # step 4: scaffold config/ + settings + Celery + tool config
 │   ├── pin-image.sh                  # freeze the dev image to python-X.Y.Z.R@sha256:…
 │   ├── set-python.sh                 # move the production image to the newest Python minor Django supports
+│   ├── schema.sh                     # generate / check openapi/schema.yaml (the API contract)
 │   ├── init-readme.sh                # replace this guide with your project's README
 │   ├── post-create.sh                # container created: .venv volume owner, uv sync, git hooks
 │   ├── pin-ssh-key.sh                # every start: map the remote alias to github.com, pin this repo's SSH key
