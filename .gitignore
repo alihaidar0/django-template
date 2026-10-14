@@ -15,7 +15,6 @@
 *.crt
 *.cer
 service-account*.json
-gcp-credentials*.json
 application_default_credentials.json
 key.json
 

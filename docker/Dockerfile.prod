@@ -4,7 +4,7 @@
 #
 #  Built and published by .github/workflows/docker.yml on every
 #  release (merge develop → main), and built + smoke-tested in CI
-#  on every develop push. Deployment-agnostic (Cloud Run, GKE, …).
+#  on every develop push. Deployment-agnostic: runs on any container platform.
 #
 #    builder  pinned uv resolves the locked dependencies into /app/.venv
 #    runtime  slim Python + the venv + the code; non-root, no uv, no compilers
