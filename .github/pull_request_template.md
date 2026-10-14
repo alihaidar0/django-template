@@ -1,5 +1,5 @@
 <!-- markdownlint-disable-file MD041 — the PR title is the page heading -->
-<!-- Branch flow: develop → main (main accepts PRs from develop only). PR title follows Conventional Commits (feat:, fix:, build:, ci:, docs:, chore:, …). -->
+<!-- Branch flow: topic branch → develop → main. Topic branches target develop; only the develop → main release PR targets main. The PR title follows Conventional Commits (feat:, fix:, build:, ci:, docs:, chore:, …): labels and release notes are generated from it. -->
 
 ## What & why
 
@@ -9,11 +9,19 @@
 
 <!-- Commands run, tests added, screenshots, or sample output. -->
 
+## Breaking changes
+
+- [ ] This change forces projects generated from the template to adapt (use a `feat!:` or `fix!:` title and a `BREAKING CHANGE:` footer; the `breaking change` label is added automatically)
+
 ## Checklist
 
-- [ ] `PR source`, `Lint`, and `CI` are green
+- [ ] This PR targets `develop` (only the `develop` → `main` release PR targets `main`)
+- [ ] **CI passed** is green
 - [ ] Tests added or updated for behaviour changes
 - [ ] Migrations included and reviewed (if models changed)
 - [ ] `README.md` / docs updated if setup, configuration, or behaviour changed
 - [ ] New environment variables added to `.env.example` and `docker-compose.yml`
+- [ ] The quickstart in `README.md`, `scripts/welcome.sh` and the CI scaffold still match (template changes)
+- [ ] GitHub Actions are pinned to a full commit SHA with a `# vX.Y.Z` comment
 - [ ] No secrets, keys, or `.env` values committed
+- [ ] The title is a Conventional Commit, or the PR carries `skip-changelog` to stay out of the release notes

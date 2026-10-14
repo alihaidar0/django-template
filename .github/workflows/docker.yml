@@ -5,7 +5,8 @@
 #
 #  Triggers:
 #    - Push to main (every merge develop → main is a release)
-#    - Tag v*.*.* on main         → adds the semver tags
+#    - Tag v*.*.*                 → adds the semver tags (started by the Release
+#                                   workflow, whose tag does not trigger this one)
 #    - Manual dispatch
 #
 #  No re-test here: the image was built and smoke-tested by CI
@@ -97,7 +98,7 @@ jobs:
       set-meta-annotations: true
       meta-images: ${{ needs.ready.outputs.image }}
       meta-tags: |
-        type=raw,value=latest,enable={{is_default_branch}}
+        type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
         type=sha,prefix=sha-,format=short
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}

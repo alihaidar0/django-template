@@ -53,18 +53,22 @@ pgdata
 # Environment variables, options, shell
 addopts
 allkeys
+gsub
 isready
+keygen
 maxmemory
 noinput
 noreload
 publickey
+sshkey
 sslmode
+tolower
+toupper
 PYTHONDONTWRITEBYTECODE
 PYTHONUNBUFFERED
 USERPROFILE
 
 # Shell aliases from the dev image
-cpurge
 pmcs
 pmmk
 pmsu

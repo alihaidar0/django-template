@@ -15,11 +15,11 @@
 #  project gets its own containers, network and volumes.
 #
 #  Git inside the container: VS Code Dev Containers forwards the host
-#  ssh-agent (the keys) and copies ~/.gitconfig. The host ~/.ssh is also
-#  mounted read-only into `app`; post-create.sh copies its config,
-#  known_hosts and *.pub files, so host aliases such as
-#  `Host github.com-work` resolve the same way as on the host. Private
-#  keys are never copied — they stay in the host's agent.
+#  ssh-agent (the keys) and copies ~/.gitconfig. Neither ~/.ssh nor any
+#  private key is mounted. A host-only alias in the remote URL (for example
+#  `git@github.com-work:owner/repo.git`) is mapped to github.com and pinned to
+#  this repository's key by scripts/pin-ssh-key.sh, which welcome.sh runs on
+#  every start.
 #
 #  The project's .venv lives in a named volume (Linux filesystem), not in
 #  the bind-mounted folder: installs and imports stay fast even when the
@@ -28,9 +28,13 @@
 
 # ── Shared settings for the three containers built from the dev image ──
 x-dev-image: &dev-image
-  # The shared dev image (non-root user `dev`). Override with DEVCONTAINER_IMAGE
-  # in .env to pin a tag, e.g. alihaidar199527/django-devcontainer:20260926.
-  image: ${DEVCONTAINER_IMAGE:-alihaidar199527/django-devcontainer:latest}
+  # The shared dev image (non-root user `dev`). The template always follows the
+  # newest published image (`latest`); a project freezes it on first start with
+  # `bash scripts/pin-image.sh` (python-X.Y.Z.R@sha256:…, the Python line it is
+  # on), after which the toolchain only changes through a reviewed Dependabot
+  # pull request. Keep this a literal line (no ${VAR}) so Dependabot's
+  # docker-compose ecosystem can read it.
+  image: alihaidar199527/django-devcontainer:latest
   # tini as PID 1: forwards signals and reaps zombies, so `docker compose stop`
   # is instant instead of waiting 10 s for `sleep infinity`.
   init: true
@@ -51,6 +55,8 @@ x-dev-image: &dev-image
     CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     EMAIL_HOST: ${EMAIL_HOST:-mailpit}
     EMAIL_PORT: ${EMAIL_PORT:-1025}
+    # First connection to github.com needs no manual "yes" prompt.
+    GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
   volumes:
     - .:/workspace:cached
     - venv:/workspace/.venv
@@ -73,9 +79,6 @@ services:
       - venv:/workspace/.venv
       - uv-cache:/home/dev/.cache/uv
       - shell-history:/home/dev/.shell_history
-      # Host SSH settings (read-only) — see the header and scripts/post-create.sh.
-      # USERPROFILE on Windows, HOME on macOS/Linux.
-      - ${USERPROFILE:-${HOME}}/.ssh:/home/dev/.ssh-host:ro
     ports:
       - "127.0.0.1:8000:8000"   # Django dev server
       - "127.0.0.1:5555:5555"   # Flower
