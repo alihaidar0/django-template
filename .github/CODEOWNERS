@@ -12,3 +12,9 @@
 /.devcontainer/  @alihaidar0
 /.pre-commit-config.yaml @alihaidar0
 /README.md       @alihaidar0
+
+# The API contract. In a project, list BOTH the backend and the frontend owners
+# on these two lines (for example: /openapi/ @backend-owner @frontend-owner), so
+# a change to the contract is seen by whoever builds against it.
+/openapi/        @alihaidar0
+/.spectral.yaml  @alihaidar0

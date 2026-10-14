@@ -54,6 +54,9 @@ per project in six commands after the container starts.
 - **Dependabot** for Actions, Docker images, compose services (including the
   dev image), pre-commit hooks and Python packages — weekly, grouped, with a
   7-day cooldown, always pull requests into `develop`.
+- **API contract, contract-first:** `openapi/schema.yaml` is generated from the code,
+  committed and checked by CI (current, style, breaking changes). It switches on by itself
+  when you commit the file; see [`docs/api-workflow.md`](https://github.com/alihaidar0/django-template/blob/main/docs/api-workflow.md).
 
 ```text
 django-devcontainer ──(CI builds & publishes)──▶ Docker Hub: alihaidar199527/django-devcontainer
@@ -129,7 +132,7 @@ uv init --bare
 
 # 2. production dependencies
 uv add django djangorestframework "psycopg[binary,pool]" dj-database-url \
-       redis celery django-celery-beat gunicorn whitenoise
+       redis celery django-celery-beat gunicorn whitenoise drf-spectacular
 
 # 3. dev / test dependencies
 uv add --dev pytest pytest-django pytest-cov factory-boy faker \
@@ -242,6 +245,7 @@ git switch -                            # back to your topic branch
 | `config/health.py` | `GET /healthz` for platform and load-balancer probes (answers before host checks) |
 | `users/` app | Custom user model (`AUTH_USER_MODEL = "users.User"`), with its first migration already generated — Django's own docs call swapping it in later "a substantial task" |
 | `config/celery.py` | Celery app (`celery -A config`), `django-celery-beat` scheduler |
+| API contract | `drf-spectacular` settings (schema class, title, version; the schema is **not** served) and `scripts/schema.sh` to write and verify `openapi/schema.yaml`, the file an API client builds against |
 | logging | everything to stdout, level via `LOG_LEVEL` |
 | `pyproject.toml` | ruff rules (incl. bugbear, bandit, Django), **mypy strict** with django-stubs, pytest-django, coverage |
 | `.github/dependabot.yml` | the Python (`uv`) ecosystem is switched on |
@@ -714,7 +718,16 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | 3 · Django | `manage.py` + `uv.lock` | mypy · pytest (PostgreSQL 18) · `check --deploy` · missing-migrations check · pip-audit · production image build + smoke test (`/healthz`, CSP header) |
 
 The single **CI passed** gate job is the required check; jobs skipped by design
-simply don't apply to the current tier. Every action is pinned to a full commit
+simply don't apply to the current tier.
+
+**API contract (opt-in, any tier):** once a project commits `openapi/schema.yaml`
+(`bash scripts/schema.sh generate`), three more jobs run and feed the same gate: *API schema
+is current*, *API style* (Spectral, rules in `.spectral.yaml`) and *API breaking changes*
+(oasdiff against the pull request's base; a breaking change needs the `breaking change` label).
+They use pinned containers from `.github/api-tools/docker-compose.yml`, not GitHub Actions,
+so nothing changes in the allowed-actions list. Workflow and conventions:
+[`docs/api-workflow.md`](https://github.com/alihaidar0/django-template/blob/main/docs/api-workflow.md),
+[`docs/api-conventions.md`](https://github.com/alihaidar0/django-template/blob/main/docs/api-conventions.md). Every action is pinned to a full commit
 SHA and every workflow runs with least-privilege permissions.
 
 ### Releases
@@ -770,7 +783,7 @@ Weekly (Monday 09:00 UTC), grouped, 7-day cooldown, every pull request into
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
 | `docker` | `docker/Dockerfile.prod` — python base (**patch updates only**, see [section 8](#8-versions-the-template-follows-the-newest-projects-freeze)) + uv (tag + digest) |
-| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image** once `scripts/pin-image.sh` pinned it (tag + digest) |
+| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `.github/api-tools/docker-compose.yml` — the oasdiff and Spectral images once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled by `scripts/init-django.sh` |
 
@@ -887,17 +900,20 @@ Celery containers; on your host the `.venv` folder stays empty.
 │   │   ├── docker.yml                # publish + scan the production image
 │   │   ├── dockerhub-description.yml # README → Docker Hub
 │   │   └── image-contract.yml        # template only: weekly check against the dev image
+│   ├── api-tools/docker-compose.yml  # pinned oasdiff + Spectral images for the API-contract CI jobs
 │   ├── rulesets/                     # importable rulesets: protect-main · protect-develop · protect-tags
 │   ├── scripts/                      # check-image-contract.sh
 │   ├── ISSUE_TEMPLATE/ · CODEOWNERS · CODE_OF_CONDUCT.md · CONTRIBUTING.md · SECURITY.md · pull_request_template.md
 │   └── actionlint.yaml · dependabot.yml · labels.yml · release.yml
 ├── .vscode/launch.json · tasks.json  # debug configs + task shortcuts
-├── docs/github-setup.md              # settings, rulesets, environments, security
+├── docs/                             # github-setup.md · api-workflow.md · api-conventions.md
+├── .spectral.yaml                    # API style rules (Spectral)
 ├── docker/Dockerfile.prod            # production image
 ├── scripts/
 │   ├── init-django.sh                # step 4: scaffold config/ + settings + Celery + tool config
 │   ├── pin-image.sh                  # freeze the dev image to python-X.Y.Z.R@sha256:…
 │   ├── set-python.sh                 # move the production image to the newest Python minor Django supports
+│   ├── schema.sh                     # generate / check openapi/schema.yaml (the API contract)
 │   ├── init-readme.sh                # replace this guide with your project's README
 │   ├── post-create.sh                # container created: .venv volume owner, uv sync, git hooks
 │   ├── pin-ssh-key.sh                # every start: map the remote alias to github.com, pin this repo's SSH key

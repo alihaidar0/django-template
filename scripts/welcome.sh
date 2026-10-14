@@ -72,7 +72,7 @@ elif [[ -f "$WORKSPACE/pyproject.toml" ]]; then
     echo "  ℹ️   pyproject.toml found — Django not initialised yet"
     step "Add dependencies (if not done yet)" \
         "uv add django djangorestframework 'psycopg[binary,pool]' dj-database-url \\" \
-        "       redis celery django-celery-beat gunicorn whitenoise" \
+        "       redis celery django-celery-beat gunicorn whitenoise drf-spectacular" \
         "uv add --dev pytest pytest-django pytest-cov factory-boy faker \\" \
         "             mypy ruff django-stubs celery-types flower pip-audit ipython"
     step "Scaffold Django (settings split, Celery, env-driven config)" \
@@ -89,7 +89,7 @@ else
         "uv init --bare"
     step "2. Production dependencies" \
         "uv add django djangorestframework 'psycopg[binary,pool]' dj-database-url \\" \
-        "       redis celery django-celery-beat gunicorn whitenoise"
+        "       redis celery django-celery-beat gunicorn whitenoise drf-spectacular"
     step "3. Dev / test dependencies" \
         "uv add --dev pytest pytest-django pytest-cov factory-boy faker \\" \
         "             mypy ruff django-stubs celery-types flower pip-audit ipython"

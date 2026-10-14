@@ -83,6 +83,7 @@ DATABASES = {
 
 INSTALLED_APPS += [
     "rest_framework",
+    "drf_spectacular",
     "django_celery_beat",
     "users",
 ]
@@ -92,6 +93,25 @@ INSTALLED_APPS += [
 # task" — a from-scratch migration history plus a data migration for every
 # existing user — so this exists even though it changes nothing yet.
 AUTH_USER_MODEL = "users.User"
+
+# ── API contract (drf-spectacular) ───────────────────────────────────────
+# openapi/schema.yaml is generated from the code (bash scripts/schema.sh generate)
+# and committed; it is the contract with every API client. The schema is NOT
+# served by the app: no SpectacularAPIView is wired into the URLconf, so
+# nothing is exposed in production unless the project adds it on purpose.
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+SPECTACULAR_SETTINGS = {
+    "TITLE": "API",  # the project's own name
+    "DESCRIPTION": "The HTTP API of this project, generated from its code.",
+    "VERSION": "0.1.0",  # the API contract version, not the app's release
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Separate request and response components: what client generators expect.
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Keep /api/v1/ out of operation ids and tags (path versioning).
+    "SCHEMA_PATH_PREFIX": r"/api/v[0-9]",
+}
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
