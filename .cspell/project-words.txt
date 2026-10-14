@@ -13,12 +13,12 @@ rhysd
 # VS Code marketplace publishers
 batisteo
 charliermarsh
-cweijan
 davidanson
 eamodio
 exiasr
 humao
 mhutchie
+ossdata
 tamasfe
 timonwong
 usernamehw
@@ -30,6 +30,7 @@ healthz
 Mailpit
 oasdiff
 pgcli
+pgsql
 pytype
 pyupgrade
 SARIF
