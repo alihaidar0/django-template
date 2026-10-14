@@ -258,7 +258,8 @@ each project that opts in (section 3).
    workflow, or by hand: `git push origin develop:main` (the pre-push hook only
    blocks a branch that already exists on the remote). The workflow never
    touches an existing `main` and can be deleted once `main` exists.
-2. The **Labels** workflow creates every label by itself on that first push,
+2. The **Labels** workflow creates every label by itself on that first push (and removes GitHub's
+   five default labels, so only the labels in `.github/labels.yml` remain),
    because the first commit contains `.github/labels.yml`. Check Actions →
    Labels before the first pull requests (Dependabot opens its first pull
    requests within minutes, and `pr-labels.yml` labels every pull request from

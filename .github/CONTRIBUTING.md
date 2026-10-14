@@ -83,7 +83,7 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 | [`ci.yml`](workflows/ci.yml) → **`CI passed`** (required) | PR → `develop` / `main` | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs (below) |
 | [`lint.yml`](workflows/lint.yml) | called by `ci.yml`, dispatch | hadolint · ShellCheck · actionlint · zizmor · `docker compose config` · cspell · markdownlint |
 | [`pr-labels.yml`](workflows/pr-labels.yml) | PR opened / edited | labels from the Conventional Commit title (drive the release notes) |
-| [`labels.yml`](workflows/labels.yml) | push `develop` / `main` touching labels, PR validation, dispatch | `.github/labels.yml` → GitHub labels (`gh` CLI, skip-delete) |
+| [`labels.yml`](workflows/labels.yml) | push `develop` / `main` touching labels, PR validation, dispatch | `.github/labels.yml` → GitHub labels (`gh` CLI); removes GitHub's five default labels; a manual run with `prune` removes every label not in the file |
 | [`bootstrap-main.yml`](workflows/bootstrap-main.yml) | push `develop`, dispatch | projects only: creates `main` from `develop` once |
 | [`release.yml`](workflows/release.yml) | push `main` | GitHub Release with generated notes (template: `vYYYY.MM.DD`; project: `pyproject.toml` version, then starts `docker.yml` on the tag) |
 | [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | **opt-in** (`PUBLISH_IMAGE`): publish the production image to GHCR or Docker Hub; ends green with a notice when unset or until the project is initialised |
@@ -113,6 +113,20 @@ grouped by label — [`release.yml`](release.yml) lists the categories) and, whe
 publishing is on, starts `docker.yml` on that tag for the `X.Y.Z` and `X.Y` image tags. In the template
 repository **Release** publishes `vYYYY.MM.DD`.
 
+### Python version
+
+**Python follows Django.** The production image (and CI) run the newest Python minor that
+Django officially supports, read from the version classifiers Django publishes on PyPI: not the
+newest Python released (Django 6.1 lists 3.12–3.14, so 3.15 is not used yet). The dev image
+follows the same rule. Dependabot therefore proposes only Python **patch** updates
+(`3.14.8` → `3.14.9`) for `docker/Dockerfile.prod`; a new minor, or a release candidate of one,
+never arrives as a pull request. When Django adds support for a newer minor and the dev image has
+moved, the weekly *Image contract* run turns red, and you move on purpose with one command:
+`bash scripts/set-python.sh` (it picks the newest minor Django supports, resolves the image tag
+and digest, and updates `docker/Dockerfile.prod`, `ci.yml` and the README badge; `--check`
+shows the change without making it). It refuses a minor that Django does not list. The generated
+project's mypy uses the interpreter it runs in, so no version is written into `pyproject.toml`.
+
 ### Workflow hardening (keep it when editing)
 
 - Every action and reusable workflow pinned to a **full commit SHA** with a
@@ -134,7 +148,7 @@ cooldown**:
 | Ecosystem | Scans |
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
-| `docker` | `docker/Dockerfile.prod` — python base + uv (tag + digest) |
+| `docker` | `docker/Dockerfile.prod` — python base (patch updates only: a new minor is moved to with `scripts/set-python.sh`) + uv (tag + digest) |
 | `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image** once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled automatically by `scripts/init-django.sh` |
