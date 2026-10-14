@@ -69,9 +69,10 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
   Dependabot alerts + security updates, CodeQL default setup, secret
   protection + push protection — all ✅. Security updates open against
   `develop`, the default branch, like the weekly version updates.
-- **Secrets and variables → Actions:** variable **`DOCKERHUB_USERNAME`**,
-  secret **`DOCKERHUB_TOKEN`** (Docker Hub access token, Read & Write);
-  optional secret `CODECOV_TOKEN`.
+- **Secrets and variables → Actions:** nothing is required. Optional: variable
+  **`PUBLISH_IMAGE`** (`ghcr` or `dockerhub`; unset publishes nothing) and, for
+  Docker Hub only, variable `DOCKERHUB_USERNAME` + secret `DOCKERHUB_TOKEN`; optional
+  secret `CODECOV_TOKEN`.
 
 ---
 
@@ -85,8 +86,8 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 | [`labels.yml`](workflows/labels.yml) | push `develop` / `main` touching labels, PR validation, dispatch | `.github/labels.yml` → GitHub labels (`gh` CLI, skip-delete) |
 | [`bootstrap-main.yml`](workflows/bootstrap-main.yml) | push `develop`, dispatch | projects only: creates `main` from `develop` once |
 | [`release.yml`](workflows/release.yml) | push `main` | GitHub Release with generated notes (template: `vYYYY.MM.DD`; project: `pyproject.toml` version, then starts `docker.yml` on the tag) |
-| [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | publish the production image (skips until the project is initialised and `DOCKERHUB_USERNAME` is set) |
-| [`dockerhub-description.yml`](workflows/dockerhub-description.yml) | push `main` touching `README.md`, dispatch | README → the image's Docker Hub page |
+| [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | **opt-in** (`PUBLISH_IMAGE`): publish the production image to GHCR or Docker Hub; ends green with a notice when unset or until the project is initialised |
+| [`dockerhub-description.yml`](workflows/dockerhub-description.yml) | push `main` touching `README.md`, dispatch | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → the image's Docker Hub page |
 | [`image-contract.yml`](workflows/image-contract.yml) | weekly, dispatch | template only: PostgreSQL / Python versions, image reference and shell aliases vs `django-devcontainer` (not required) |
 
 ### CI tiers — never fails on a fresh template
@@ -102,13 +103,14 @@ jobs are simply not applicable at the current tier.
 
 ### Releases
 
-Merging `develop` → `main` publishes
-`docker.io/<DOCKERHUB_USERNAME>/<repo>` as `latest` + `sha-<short>` (native
-amd64 + arm64, SBOM, Sigstore-signed provenance) and scans it with Trivy.
+CI builds and smoke-tests the production image on every pull request and pushes
+nothing. A project that opted in to publishing (`PUBLISH_IMAGE`) gets, on a merge
+`develop` → `main`, `<registry>/<repo>` as `latest` + `sha-<short>` (native
+amd64 + arm64, SBOM, Sigstore-signed provenance), scanned with Trivy.
 In a project the same merge runs **Release**: when `version` in `pyproject.toml`
 is new it publishes `vX.Y.Z` (notes generated from the merged pull requests,
-grouped by label — [`release.yml`](release.yml) lists the categories) and starts
-`docker.yml` on that tag for the `X.Y.Z` and `X.Y` image tags. In the template
+grouped by label — [`release.yml`](release.yml) lists the categories) and, when
+publishing is on, starts `docker.yml` on that tag for the `X.Y.Z` and `X.Y` image tags. In the template
 repository **Release** publishes `vYYYY.MM.DD`.
 
 ### Workflow hardening (keep it when editing)

@@ -47,7 +47,8 @@ per project in six commands after the container starts.
   pytest, deploy check, dependency audit and a production-image smoke test —
   tiered, so it never fails on a fresh template.
 - **Production image** (Gunicorn, non-root, amd64 + arm64, SBOM, signed
-  provenance) published to Docker Hub on every release.
+  provenance), built and smoke-tested on every pull request; publishing it to
+  GitHub Container Registry or Docker Hub is opt-in, per project.
 - **Releases and labels as code:** labels sync from `.github/labels.yml`, pull
   requests are labelled from their title, release notes are generated from them.
 - **Dependabot** for Actions, Docker images, compose services (including the
@@ -182,6 +183,13 @@ Open a pull request into `develop` (the default base) and merge it with
 **7. Set up the GitHub repository** — settings, Actions permissions, security
 and the three rulesets — with [section 3](#3-set-up-the-github-repository).
 
+**8. Optional: publish the production image.** CI already builds and smoke-tests it on
+every pull request and pushes nothing. If the project should push it to a registry, set
+the repository variable `PUBLISH_IMAGE` to `ghcr` (GitHub Container Registry, no secrets)
+or `dockerhub` (needs `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`); see
+[3.2](#32-settings-to-apply). Leave it unset to publish nothing, for example until you
+have chosen where the project runs. Each project decides this on its own.
+
 ### 2.4 First run: check that everything works
 
 Open a **second terminal** in the container (the first one runs `runserver`) and
@@ -282,8 +290,8 @@ which also travels with your project.
    never reported would block the first pull request.
 5. Update `.github/CODEOWNERS` with your username and review `LICENSE`, `SECURITY.md`
    and `.github/CONTRIBUTING.md` (they describe the template until you replace them).
-6. When the project has code, add **Python** to CodeQL; when you want to publish the
-   production image, add the Docker Hub variable and secret.
+6. When the project has code, add **Python** to CodeQL. Optional: set `PUBLISH_IMAGE` if the
+   project should push its production image to a registry.
 7. Verify ([3.4](#34-check-that-it-works)).
 
 ### 3.2 Settings to apply
@@ -351,19 +359,31 @@ deliberate edit of the `runs-on:` lines once the build has been verified.
 #### Settings → Secrets and variables, and Environments
 
 CI needs **no secrets and no environments**: it only uses the automatic
-`GITHUB_TOKEN`. Publishing the production image needs two values (Settings →
-Secrets and variables → Actions):
+`GITHUB_TOKEN`, and it verifies the production image (build + smoke test)
+without pushing it anywhere. Publishing the image to a registry is **opt-in**,
+chosen per project with one repository variable (Settings → Secrets and
+variables → Actions → Variables):
+
+| `PUBLISH_IMAGE` | What happens on a merge into `main` | What to add |
+| --- | --- | --- |
+| *(unset — the default)* | nothing is published; `docker.yml` ends green with a notice | nothing |
+| `ghcr` | the image goes to GitHub Container Registry, `ghcr.io/<owner>/<repo>` | nothing: it signs in with the automatic token. Set the package visibility under the repository's *Packages* if you want it public |
+| `dockerhub` | the image goes to `docker.io/<DOCKERHUB_USERNAME>/<repo>`, and the README is synced to the Docker Hub page | variable `DOCKERHUB_USERNAME` (your namespace) and secret `DOCKERHUB_TOKEN` (an access token, Read & Write) |
+
+Any other value fails the run on purpose, so a typo is noticed. A different
+registry or host: replace the `publish` job in `docker.yml` and add the
+project's own deployment workflow; the template assumes neither.
 
 | Kind | Name | Value |
 | --- | --- | --- |
-| Variable | `DOCKERHUB_USERNAME` | your Docker Hub namespace (not secret) |
-| Secret | `DOCKERHUB_TOKEN` | a Docker Hub access token (Read & Write) |
+| Variable | `PUBLISH_IMAGE` | `ghcr` or `dockerhub` — leave it unset to publish nothing |
+| Variable (Docker Hub only) | `DOCKERHUB_USERNAME` | your Docker Hub namespace (not secret) |
+| Secret (Docker Hub only) | `DOCKERHUB_TOKEN` | a Docker Hub access token (Read & Write) |
 | Secret (optional) | `CODECOV_TOKEN` | enables the coverage upload |
 
-`docker.yml` skips itself with a notice until the project has `manage.py` +
-`uv.lock` and `DOCKERHUB_USERNAME` is set. **Dependabot secrets** (a separate
-tab) stay empty: Dependabot pull requests cannot read Actions secrets, and the
-coverage upload simply skips itself there.
+The workflow also waits until the project has `manage.py` + `uv.lock`.
+**Dependabot secrets** (a separate tab) stay empty: Dependabot pull requests
+cannot read Actions secrets, and the coverage upload simply skips itself there.
 
 **Environments** (Settings → Environments) are only needed once you add a
 deployment workflow. Create one per target (each project deploys where it
@@ -678,9 +698,9 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | `pr-labels.yml` | pull request opened/edited | labels from the Conventional Commit title |
 | `labels.yml` | push to `develop`/`main` touching `labels.yml` | labels as code (`gh`, nothing is deleted) |
 | `bootstrap-main.yml` | push to `develop` (projects) | creates `main` once |
-| `docker.yml` | push to `main`, tags, dispatch | publishes + scans the production image |
+| `docker.yml` | push to `main`, tags, dispatch | **opt-in** (`PUBLISH_IMAGE`): publishes + scans the production image |
 | `release.yml` | push to `main` | GitHub Release with generated notes |
-| `dockerhub-description.yml` | push to `main` touching `README.md` | README → Docker Hub |
+| `dockerhub-description.yml` | push to `main` touching `README.md` | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → Docker Hub |
 | `image-contract.yml` | weekly (template only) | template vs dev image: PostgreSQL, Python, image, aliases |
 
 ### CI tiers — never fails on a fresh template
@@ -721,20 +741,23 @@ running as the non-root user `app`:
   when a separate job migrates), then Gunicorn bound to `$PORT` (default 8080)
   with `$WEB_CONCURRENCY` workers (default 2); override anything via
   `GUNICORN_CMD_ARGS`.
-- Published on every merge to `main` as `latest` + `sha-<short>`, plus
-  `X.Y.Z` / `X.Y` when the **Release** workflow tags the `pyproject.toml` version.
+- CI builds it and smoke-tests it (`/healthz`, CSP header, non-root user) on every
+  pull request, without pushing it. When the project opts in (`PUBLISH_IMAGE`), a merge
+  into `main` publishes it as `latest` + `sha-<short>`, plus `X.Y.Z` / `X.Y` when the
+  **Release** workflow tags the `pyproject.toml` version.
 
 ```bash
 docker run --rm -p 8080:8080 \
   -e SECRET_KEY=change-me -e DATABASE_URL=postgres://… -e ALLOWED_HOSTS=example.com \
-  <DOCKERHUB_USERNAME>/<repo>:latest
+  <registry>/<owner>/<repo>:latest        # e.g. ghcr.io/<owner>/<repo>
 ```
 
 Where a project deploys is its own choice, so the template ships no deployment
-workflow and assumes no host. Publishing the image to Docker Hub is optional
-(`docker.yml` skips itself until `DOCKERHUB_USERNAME` is set); use another
-registry by replacing that workflow, and add the deployment workflow your
-project needs.
+workflow and assumes no host or registry. To publish the image, set the repository
+variable `PUBLISH_IMAGE` to `ghcr` (no secrets) or `dockerhub` (needs
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`); leave it unset and nothing is pushed.
+For another registry, replace the `publish` job in `docker.yml`; add the deployment
+workflow your project needs once it has chosen a host.
 
 ### Dependabot
 
@@ -959,6 +982,9 @@ The template is a project like any other: topic branch → pull request into
 - **Quickstart in three places:** the README, `scripts/welcome.sh` and the CI
   scaffold step run the same commands — change them together. CI scaffolds a
   sample project with them on every pull request.
+- **No secrets, no variables:** the template publishes nothing, so its *Settings → Secrets and
+  variables* pages stay empty and `PUBLISH_IMAGE` stays unset. Registry credentials belong
+  to each project, never to the template.
 - **Image contract:** the weekly *Image contract* run compares the template with
   the dev image. A red run means the image or the template moved on; fix it
   with a topic branch.

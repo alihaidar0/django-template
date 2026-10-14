@@ -20,7 +20,7 @@ feat/*  fix/*  docs/*  ci/*  chore/*  deps/*
        main    ← stable branch, protected: pull requests only
         │  push (the merge)
         ▼
-  docker.yml (production image) + release.yml (GitHub Release)
+  release.yml (GitHub Release) + docker.yml (production image, only if PUBLISH_IMAGE is set)
 ```
 
 - Nobody pushes to `develop` or `main` directly (rulesets enforce it; the
@@ -89,7 +89,7 @@ explicitly:
 | `release.yml` | `contents: write` (+ `actions: write` in a project) | publish the release; start `docker.yml` on the new tag |
 | `labels.yml` | `issues: write` | create the labels |
 | `pr-labels.yml` | `pull-requests: write` | add labels from the PR title |
-| `docker.yml` | `id-token: write`, `security-events: write` | keyless signing; upload the scan |
+| `docker.yml` | `id-token: write`, `packages: write`, `security-events: write` | keyless signing; push to ghcr.io (only when `PUBLISH_IMAGE=ghcr`); upload the scan |
 
 Workflows run on an explicit runner image (`ubuntu-26.04`) rather than
 `ubuntu-latest`. GitHub moves `ubuntu-latest` on its own schedule, which
@@ -99,19 +99,31 @@ deliberate edit of the `runs-on:` lines once the build has been verified.
 ## 3. Environments and secrets
 
 CI needs **no secrets and no environments**: it only uses the automatic
-`GITHUB_TOKEN`. Publishing the production image needs two values (Settings →
-Secrets and variables → Actions):
+`GITHUB_TOKEN`, and it verifies the production image (build + smoke test)
+without pushing it anywhere. Publishing the image to a registry is **opt-in**,
+chosen per project with one repository variable (Settings → Secrets and
+variables → Actions → Variables):
+
+| `PUBLISH_IMAGE` | What happens on a merge into `main` | What to add |
+| --- | --- | --- |
+| *(unset — the default)* | nothing is published; `docker.yml` ends green with a notice | nothing |
+| `ghcr` | the image goes to GitHub Container Registry, `ghcr.io/<owner>/<repo>` | nothing: it signs in with the automatic token. Set the package visibility under the repository's *Packages* if you want it public |
+| `dockerhub` | the image goes to `docker.io/<DOCKERHUB_USERNAME>/<repo>`, and the README is synced to the Docker Hub page | variable `DOCKERHUB_USERNAME` (your namespace) and secret `DOCKERHUB_TOKEN` (an access token, Read & Write) |
+
+Any other value fails the run on purpose, so a typo is noticed. A different
+registry or host: replace the `publish` job in `docker.yml` and add the
+project's own deployment workflow; the template assumes neither.
 
 | Kind | Name | Value |
 | --- | --- | --- |
-| Variable | `DOCKERHUB_USERNAME` | your Docker Hub namespace (not secret) |
-| Secret | `DOCKERHUB_TOKEN` | a Docker Hub access token (Read & Write) |
+| Variable | `PUBLISH_IMAGE` | `ghcr` or `dockerhub` — leave it unset to publish nothing |
+| Variable (Docker Hub only) | `DOCKERHUB_USERNAME` | your Docker Hub namespace (not secret) |
+| Secret (Docker Hub only) | `DOCKERHUB_TOKEN` | a Docker Hub access token (Read & Write) |
 | Secret (optional) | `CODECOV_TOKEN` | enables the coverage upload |
 
-`docker.yml` skips itself with a notice until the project has `manage.py` +
-`uv.lock` and `DOCKERHUB_USERNAME` is set. **Dependabot secrets** (a separate
-tab) stay empty: Dependabot pull requests cannot read Actions secrets, and the
-coverage upload simply skips itself there.
+The workflow also waits until the project has `manage.py` + `uv.lock`.
+**Dependabot secrets** (a separate tab) stay empty: Dependabot pull requests
+cannot read Actions secrets, and the coverage upload simply skips itself there.
 
 **Environments** (Settings → Environments) are only needed once you add a
 deployment workflow. Create one per target (each project deploys where it
@@ -229,6 +241,12 @@ done
 5. Tick **Template repository** (section 1) once everything above is in place.
 6. Verify (next section).
 
+The template repository itself needs **no Actions secrets and no variables**: it
+builds and smoke-tests the production image in CI but publishes nothing, so leave
+`PUBLISH_IMAGE` unset and keep *Settings → Secrets and variables* empty (delete any
+leftover registry token and revoke it at the registry). Registry credentials belong to
+each project that opts in (section 3).
+
 ### Every project created from the template
 
 1. **Use this template** → Create a new repository. Leave **Include all
@@ -263,9 +281,9 @@ done
    inert in a project (they only run where the repository is a template).
    Delete them if you like. The `app-release` job of `release.yml` publishes a
    GitHub Release for the `pyproject.toml` version when `main` changes.
-7. Add the Docker Hub variable and secret (section 3) to publish the
-   production image, and deployment workflows, environments and secrets when
-   you need them.
+7. Optional: set `PUBLISH_IMAGE` (section 3) if the project should push its
+   production image to a registry, and add a deployment workflow, an
+   environment and its secrets once you know where the project runs.
 
 ## 7. Verify the protection works
 

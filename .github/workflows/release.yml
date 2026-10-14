@@ -96,6 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET_SHA: ${{ github.sha }}
+          PUBLISH_IMAGE: ${{ vars.PUBLISH_IMAGE }}
         run: |
           set -euo pipefail
           if [[ ! -f manage.py || ! -f pyproject.toml ]]; then
@@ -127,6 +128,10 @@ jobs:
             "${flags[@]}"
           echo "Published release $tag" >> "$GITHUB_STEP_SUMMARY"
 
-          # Publishes the semver image tags (X.Y.Z and X.Y); it skips itself until
-          # DOCKERHUB_USERNAME is set and the project has manage.py + uv.lock.
-          gh workflow run docker.yml --ref "$tag"
+          # Publishes the semver image tags (X.Y.Z and X.Y), but only for a project
+          # that opted in to publishing (repository variable PUBLISH_IMAGE).
+          if [[ -n "$PUBLISH_IMAGE" ]]; then
+            gh workflow run docker.yml --ref "$tag"
+          else
+            echo "Image publishing is off (PUBLISH_IMAGE is not set); only the GitHub Release was created." >> "$GITHUB_STEP_SUMMARY"
+          fi
