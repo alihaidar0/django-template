@@ -104,6 +104,8 @@ else
         "bash scripts/pin-image.sh   pins the dev image to an exact build"
     step "8. Write your project README (once)" \
         "bash scripts/init-readme.sh --description \"What it does.\""
+    step "9. Optional: publish the production image" \
+        "set the repository variable PUBLISH_IMAGE to ghcr or dockerhub (README → 3.2)"
 fi
 
 step "Commit on a topic branch — develop and main are protected" \
