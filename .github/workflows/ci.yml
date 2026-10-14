@@ -95,6 +95,9 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
+          # this job installs nothing worth caching (setup-uv would warn otherwise).
+          enable-cache: false
 
       - name: Lint the pull request's commit messages
         env:
@@ -190,6 +193,9 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
+          # this job installs nothing worth caching (setup-uv would warn otherwise).
+          enable-cache: false
 
       - name: Cache pre-commit environments
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -323,6 +329,9 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
+          # this job installs nothing worth caching (setup-uv would warn otherwise).
+          enable-cache: false
       # Audits the exact pinned set (incl. transitive deps) without installing it.
       - name: Audit dependencies
         run: |
@@ -349,6 +358,9 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
+          # this job installs nothing worth caching (setup-uv would warn otherwise).
+          enable-cache: false
 
       # Fresh template: follow the documented steps 1–4 to get a real project.
       - name: Scaffold a sample project (fresh template)
