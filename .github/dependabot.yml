@@ -64,7 +64,11 @@ updates:
 
   # ── Dev services (postgres, redis, mailpit) ──────────────────────────
   - package-ecosystem: "docker-compose"
-    directory: "/"
+    # "/" is the dev stack; the second directory holds the API-contract CI tools
+    # (oasdiff, Spectral) as pinned images.
+    directories:
+      - "/"
+      - "/.github/api-tools"
     schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
     cooldown: { default-days: 7 }
     target-branch: "develop"

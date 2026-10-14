@@ -16,6 +16,9 @@
 #    Tier 3  Django       manage.py + uv.lock mypy · pytest (PostgreSQL) · check --deploy ·
 #                                             missing migrations · pip-audit · prod-image
 #
+#  API contract (any tier, opt-in): once openapi/schema.yaml exists, three more jobs
+#  run: schema is current · API style (Spectral) · API breaking changes (oasdiff).
+#
 #  "prod-image" builds docker/Dockerfile.prod and serves one request
 #  through Gunicorn. On a fresh template it first scaffolds a sample
 #  project with the exact documented steps (uv init --bare → uv add →
@@ -148,6 +151,7 @@ jobs:
     outputs:
       tier: ${{ steps.state.outputs.tier }}
       locked: ${{ steps.state.outputs.locked }}
+      api: ${{ steps.state.outputs.api }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -169,8 +173,14 @@ jobs:
           else
             tier=1; label="fresh template — pre-commit + scaffolded prod-image test"
           fi
-          echo "tier=$tier" >> "$GITHUB_OUTPUT"
-          echo "locked=$locked" >> "$GITHUB_OUTPUT"
+          # The API-contract jobs switch on by themselves once a project commits
+          # openapi/schema.yaml (bash scripts/schema.sh generate).
+          api=false; [ -f openapi/schema.yaml ] && api=true
+          {
+            echo "tier=$tier"
+            echo "locked=$locked"
+            echo "api=$api"
+          } >> "$GITHUB_OUTPUT"
           echo "### Tier ${tier}: ${label}" >> "$GITHUB_STEP_SUMMARY"
 
           # Nudge (never fail) when a project has not frozen its dev image yet.
@@ -429,6 +439,118 @@ jobs:
   # any job above failed or was cancelled; jobs skipped by design (a Django job
   # on a fresh template, the template guard in a generated project) count as
   # passed.
+  # ── API contract: opt-in, runs only once openapi/schema.yaml exists ──────
+  # The tools run as pinned containers (.github/api-tools/docker-compose.yml),
+  # not as GitHub Actions: GitHub checks every action a workflow references
+  # against the allowed-actions list at startup, even in skipped jobs, so a
+  # missing entry would fail this whole workflow in every project without an API.
+  api-schema:
+    name: API schema is current
+    needs: detect
+    if: needs.detect.outputs.api == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # The committed file must equal what the code generates now.
+      - name: openapi/schema.yaml is current
+        run: bash scripts/schema.sh check
+
+  api-lint:
+    name: API style (Spectral)
+    needs: detect
+    if: needs.detect.outputs.api == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint openapi/schema.yaml
+        run: |
+          [ -f .spectral.yaml ] || { echo "::error::.spectral.yaml is missing; restore it from the template."; exit 1; }
+          docker compose -f .github/api-tools/docker-compose.yml run --rm -T spectral \
+            lint openapi/schema.yaml --ruleset .spectral.yaml --fail-severity error
+
+  # Compares the schema on the pull request's base commit with the PR's schema.
+  # A breaking change fails the job unless the PR carries the `breaking change`
+  # label (added from a `feat!:` title or by hand): that is the explicit sign
+  # that the owner accepted it. The changelog always goes to the job summary.
+  api-breaking:
+    name: API breaking changes (oasdiff)
+    needs: detect
+    if: needs.detect.outputs.api == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read   # read the PR's labels
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout the base commit's schema
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          sparse-checkout: openapi/schema.yaml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Compare with the base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+
+          if [ ! -f base/openapi/schema.yaml ]; then
+            echo "::notice::The base branch has no openapi/schema.yaml yet: nothing to compare (this pull request introduces the contract)."
+            echo "No schema on the base branch yet: nothing to compare." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          oasdiff=(docker compose -f .github/api-tools/docker-compose.yml run --rm -T oasdiff)
+
+          { echo "## API changelog (base → this pull request)"; echo; "${oasdiff[@]}" changelog base/openapi/schema.yaml openapi/schema.yaml --format markdown; } >> "$GITHUB_STEP_SUMMARY" || true
+
+          set +e
+          "${oasdiff[@]}" breaking base/openapi/schema.yaml openapi/schema.yaml --fail-on ERR
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "No breaking changes."
+            exit 0
+          fi
+
+          # Read the labels now (not from the event payload): the labelling workflow
+          # may have added `breaking change` after this run started.
+          if gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | grep -qxF "breaking change"; then
+            echo "::notice::Breaking API changes were found; the pull request carries the 'breaking change' label, so they are accepted."
+            exit 0
+          fi
+          echo "::error::Breaking API changes (listed above). If they are intended, add the 'breaking change' label (a feat!: title does it); before the first release the owner must approve, after it use a new versioned path or a deprecation period."
+          exit 1
+
   ci-passed:
     name: CI passed
     needs:
@@ -443,6 +565,9 @@ jobs:
       - django-check
       - security
       - prod-image
+      - api-schema
+      - api-lint
+      - api-breaking
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

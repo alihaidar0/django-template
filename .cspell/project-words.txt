@@ -28,12 +28,16 @@ errorlens
 ghaction
 healthz
 Mailpit
+oasdiff
 pgcli
 pytype
 pyupgrade
 SARIF
 Sigstore
+spectacular
+stoplight
 tini
+tufin
 winget
 zizmor
 zizmorcore
