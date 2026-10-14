@@ -1,23 +1,26 @@
 # ============================================================
 #  .github/workflows/labels.yml
 #
-#  Syncs .github/labels.yml to the repository's GitHub labels.
+#  Keeps the repository's GitHub labels identical to .github/labels.yml
+#  (labels as code), with the plain `gh` CLI — no third-party action.
 #
 #  Triggers:
-#    - Push to main where labels.yml (or this file) changed → applies the sync
-#    - PR that changes them                                → dry run; the log shows what merging would change
-#    - Manual dispatch                                     → applies on main, dry run on any other branch
+#    - Push to develop (the default branch) or main where labels.yml changed.
+#      This includes the first commit of a repository created from the
+#      template, so the labels exist before Dependabot opens its first PRs.
+#    - PR that changes the file → validates it only (nothing is applied)
+#    - Manual dispatch on develop / main → applies (Actions → Labels → Run
+#      workflow), only needed if the labels are missing
 #
-#  Labels on GitHub that are not in labels.yml are kept (skip-delete),
-#  so labels added in the UI are never removed by a sync.
+#  Labels on GitHub that are not in labels.yml are left alone, so labels
+#  added in the UI are never removed by a sync.
 # ============================================================
 
 name: Labels
 
 on:
   push:
-    branches:
-      - main
+    branches: [develop, main]
     paths:
       - ".github/labels.yml"
       - ".github/workflows/labels.yml"
@@ -50,10 +53,41 @@ jobs:
           sparse-checkout: .github/labels.yml
           persist-credentials: false
 
-      - name: Sync labels
-        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
-        with:
-          yaml-file: .github/labels.yml
-          skip-delete: true
-          # Applied only from main; a PR, or a manual run on another branch, only previews.
-          dry-run: ${{ github.ref != 'refs/heads/main' }}
+      # yq, jq and gh are preinstalled on the runner. `gh label create --force`
+      # creates a missing label and updates colour and description of an
+      # existing one.
+      - name: Validate and sync labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APPLY: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') }}
+        run: |
+          set -euo pipefail
+
+          count=0
+          while IFS= read -r label; do
+            name="$(jq -r '.name // ""' <<< "${label}")"
+            color="$(jq -r '.color // ""' <<< "${label}")"
+            description="$(jq -r '.description // ""' <<< "${label}")"
+
+            if [ -z "${name}" ] || [[ ! "${color}" =~ ^[0-9a-fA-F]{6}$ ]]; then
+              echo "::error file=.github/labels.yml::Invalid label entry (needs a name and a 6-digit hex colour): ${label}"
+              exit 1
+            fi
+
+            if [ "${APPLY}" = "true" ]; then
+              gh label create "${name}" --color "${color}" --description "${description}" --force
+            fi
+            count=$((count + 1))
+          done < <(yq -o=json -I=0 '.[]' .github/labels.yml)
+
+          if [ "${count}" -eq 0 ]; then
+            echo "::error file=.github/labels.yml::No labels found in the file."
+            exit 1
+          fi
+
+          if [ "${APPLY}" = "true" ]; then
+            echo "Synced ${count} labels." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Validated ${count} labels (dry run: nothing applied)." >> "$GITHUB_STEP_SUMMARY"
+          fi

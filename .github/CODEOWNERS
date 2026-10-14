@@ -10,3 +10,5 @@
 /.github/       @alihaidar0
 /docker-compose.yml @alihaidar0
 /.devcontainer/  @alihaidar0
+/.pre-commit-config.yaml @alihaidar0
+/README.md       @alihaidar0

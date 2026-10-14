@@ -5,15 +5,17 @@
 #  page of this project's production image:
 #    docker.io/<DOCKERHUB_USERNAME>/<repo-name>
 #
+#  OPT-IN: runs only when the repository variable PUBLISH_IMAGE is `dockerhub`
+#  (see docker.yml). With `ghcr`, or when unset, every job is skipped.
+#
 #  Triggers:
 #    - Push to main where README.md changed → updates Docker Hub if the image exists
 #    - Manual dispatch                      → same
 #
-#  Skips cleanly while the DOCKERHUB_USERNAME variable is unset or the
-#  image hasn't been published yet (e.g. in the template repo itself).
-#  No PR trigger: unmerged docs never reach Docker Hub.
+#  Also skips cleanly while the image hasn't been published yet. No PR
+#  trigger: unmerged docs never reach Docker Hub.
 #
-#  Required configuration:
+#  Required configuration (only for PUBLISH_IMAGE=dockerhub):
 #    Variable  DOCKERHUB_USERNAME   Docker Hub namespace
 #    Secret    DOCKERHUB_TOKEN      Docker Hub access token (Read & Write)
 # ============================================================
@@ -37,6 +39,7 @@ concurrency:
 jobs:
   update-description:
     name: Update Docker Hub description
+    if: ${{ vars.PUBLISH_IMAGE == 'dockerhub' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:

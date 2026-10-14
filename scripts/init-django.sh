@@ -40,6 +40,13 @@ for pkg in django dj-database-url celery whitenoise; do
         exit 1
     fi
 done
+# The generated settings use Django 6's Content Security Policy middleware. Django
+# 6.1 supports Python 3.12–3.14, so it fits the dev image's Python line.
+django_major="$(uv pip show django 2>/dev/null | sed -nE 's/^Version: ([0-9]+)\..*/\1/p')"
+if [[ -z "$django_major" || "$django_major" -lt 6 ]]; then
+    echo "❌ Django 6.0 or newer is required (Content Security Policy) — found ${django_major:-none}. Run: uv add 'django>=6.1'"
+    exit 1
+fi
 
 echo "▶ django-admin startproject config ."
 uv run django-admin startproject config .
@@ -148,7 +155,7 @@ from .base import *
 DEBUG = False
 SECRET_KEY = os.environ["SECRET_KEY"]  # required — fail fast if missing
 
-# Behind a TLS-terminating proxy / load balancer (Cloud Run, etc.)
+# Behind a TLS-terminating proxy / load balancer
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True").lower() in {"1", "true", "yes", "on"}
 SESSION_COOKIE_SECURE = True
@@ -261,7 +268,7 @@ from django.http import HttpRequest, HttpResponse
 class HealthCheckMiddleware:
     """Answer ``GET /healthz`` with 200 before any other middleware runs.
 
-    Platforms (Cloud Run, Kubernetes, load balancers) probe the container by IP
+    Platforms (orchestrators, load balancers) probe the container by IP
     or an internal hostname over plain HTTP; running first means those probes are
     not rejected by ALLOWED_HOSTS or redirected to HTTPS. It checks that the
     process serves requests (liveness) — add a readiness view for dependencies.
@@ -327,13 +334,22 @@ fi
 
 echo "▶ Formatting the generated code (ruff, same style as the pre-commit hook)"
 # startproject writes single quotes; format now so the first commit is clean.
-if command -v ruff >/dev/null 2>&1; then ruff_cmd=(ruff); else ruff_cmd=(uvx ruff); fi
+# Prefer the project's pinned ruff (uv.lock); fall back to a one-off uvx run.
+if uv run --quiet ruff --version >/dev/null 2>&1; then ruff_cmd=(uv run --quiet ruff); else ruff_cmd=(uvx ruff); fi
 "${ruff_cmd[@]}" format --quiet manage.py config users
 "${ruff_cmd[@]}" check --quiet --fix manage.py config users
+
+# Python dependencies now exist, so Dependabot's `uv` ecosystem can run: the block
+# is commented in the template (without pyproject.toml the job would fail weekly).
+# Uncomment it from its marker line to the end of the file.
+if [[ -f .github/dependabot.yml ]] && grep -q '^  # - package-ecosystem: "uv"' .github/dependabot.yml; then
+    echo "▶ Enabling Dependabot for Python dependencies (.github/dependabot.yml)"
+    sed -i '/^  # - package-ecosystem: "uv"/,$ s/^  # /  /' .github/dependabot.yml
+fi
 
 echo ""
 echo "✅ Django project initialised."
 echo "   Next: pre-commit install · python manage.py migrate · python manage.py runserver 0.0.0.0:8000"
 echo "   Health check: GET /healthz · settings: config/settings/ · tool config: pyproject.toml"
 echo "   Custom user model: users/models.py (AUTH_USER_MODEL = \"users.User\")"
-echo "   Then enable the commented 'uv' ecosystem in .github/dependabot.yml."
+echo "   Then freeze the toolchain (bash scripts/pin-image.sh) and write your README (bash scripts/init-readme.sh)."

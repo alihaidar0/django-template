@@ -2,13 +2,12 @@
 #  .github/workflows/lint.yml
 #
 #  Static checks for the repository's infrastructure files (Python code
-#  is covered by CI → pre-commit / mypy). Runs on every develop push and
-#  every PR into develop (no path filter), so its single "Lint" check can
-#  be REQUIRED on main: status checks attach to the commit, so the
-#  develop → main PR reuses develop's result instead of running again.
+#  is covered by CI → pre-commit / mypy). A reusable workflow, called by the
+#  "Lint" job of ci.yml, so one aggregate check ("CI passed") covers it.
+#  Run it by hand from the Actions tab if you want only these checks.
 #
 #    hadolint        docker/Dockerfile.prod (config: .hadolint.yaml)
-#    ShellCheck      scripts/*.sh (preinstalled on the runner)
+#    ShellCheck      scripts/*.sh and .github/scripts/*.sh (preinstalled on the runner)
 #    actionlint      .github/workflows/* (config: .github/actionlint.yaml)
 #    zizmor          GitHub Actions security audit (injection, permissions, pinning)
 #    compose config  docker-compose.yml is valid and interpolates
@@ -19,18 +18,11 @@
 name: Lint
 
 on:
-  push:
-    branches: [develop]
-  pull_request:
-    branches: [develop]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: lint-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' }}
 
 jobs:
   lint:
@@ -50,7 +42,7 @@ jobs:
           config: .hadolint.yaml
 
       - name: ShellCheck
-        run: shellcheck --version | head -2 && shellcheck scripts/*.sh
+        run: shellcheck --version | head -2 && shellcheck scripts/*.sh .github/scripts/*.sh
 
       - name: actionlint
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0

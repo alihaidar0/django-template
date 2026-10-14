@@ -2,79 +2,77 @@
 
 Source of truth for **branching, protection rules, CI/CD, releases, and
 dependency automation**. Some pieces are applied on GitHub (rulesets,
-settings) rather than in the repo. Project setup is in the root
-[`README.md`](../README.md).
+settings) rather than in the repo — step by step in
+[`docs/github-setup.md`](../docs/github-setup.md). Project setup is in the
+root [`README.md`](../README.md).
 
 ---
 
 ## 1. Branching model
 
 ```text
-            direct pushes          Dependabot PRs
-                  │                      │
-                  ▼                      ▼
-develop  ──────────────────────────────────────  (integration: CI + Lint on every push)
-                  │
-                  └──PR──▶  main   (release: every merge publishes the production image)
+feat/*  fix/*  docs/*  ci/*  chore/*  deps/*      Dependabot
+        │                                              │
+        └────────── pull request ──────────────────────┘
+                          ▼
+develop  ──────────────────────────────────────  (default branch, integration)
+                          │
+                          └──pull request──▶  main   (release: every merge publishes the production image)
 ```
 
 | Branch | Role | Direct push? | Accepts PRs from |
 | --- | --- | --- | --- |
-| `main` | Released history — the default branch | ❌ | `develop` **only** |
-| `develop` | Integration branch — daily work lands here | ✅ | Dependabot (and any short-lived branch) |
+| `main` | Released history | ❌ | `develop` **only** |
+| `develop` | Integration branch and the **default branch** | ❌ | topic branches and Dependabot |
+| `feat/*` `fix/*` `docs/*` `ci/*` `chore/*` `deps/*` | One change each | ✅ (yours) | — |
 
-- Commit and push **directly to `develop`**. Every push runs `Lint` and `CI`
-  on that commit.
-- A release is a PR **`develop` → `main`**. It needs no new CI run: status
-  checks attach to the commit, so the PR reuses develop's head-commit results.
-- Dependabot opens every update PR against `develop`.
-- Commit messages follow **Conventional Commits** (enforced locally by the
-  `commit-msg` hook): `feat` `fix` `chore` `docs` `style` `refactor` `perf`
-  `test` `build` `ci` `revert` `wip`.
+- Create a topic branch from an up-to-date `develop`, commit, push it, and
+  open a pull request **into `develop`**. Merge it with **Create a merge
+  commit** (no squash, no rebase) once **CI passed** is green.
+- A release is one pull request **`develop` → `main`**, title
+  `release: <summary>`, also merged with a merge commit.
+- Dependabot opens every update pull request against `develop`. Review them
+  once a week, merge what you need, then release.
+- A new repository created from the template starts with `develop` only; the
+  **Bootstrap main** workflow creates `main` from it.
+- Commit messages and pull request titles follow **Conventional Commits**
+  (enforced locally by the `commit-msg` hook and in CI): `feat` `fix` `chore`
+  `docs` `style` `refactor` `perf` `test` `build` `ci` `revert` `wip`. A
+  breaking change is `type!:` with a `BREAKING CHANGE:` footer.
+- Local safety nets (the rulesets are the real gate): `no-commit-to-branch`
+  stops a commit on `develop`/`main`, `block-protected-push` stops a push.
 
 ---
 
 ## 2. GitHub settings (apply in the UI)
 
-### Ruleset `protect-main` (Settings → Rules → Rulesets)
+The rulesets ship as importable JSON in [`rulesets/`](rulesets/); every other
+setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 
-| Setting | Value |
-| --- | --- |
-| Target branches | `main` (Include default branch) |
-| Enforcement status | **Active**, bypass list *empty* |
-| **Restrict creations** / **Restrict deletions** | ✅ |
-| **Restrict updates** | ❌ — with an empty bypass list it blocks **every** update to `main`, PR merges included |
-| **Block force pushes** | ✅ |
-| **Require a pull request before merging** | ✅ |
-| &nbsp;&nbsp;Required approvals | **0** while solo (raise to 1 with a second maintainer) |
-| &nbsp;&nbsp;Require review from Code Owners | ❌ while solo — the author can't approve their own PR; enable with 1 approval once there's a second maintainer |
-| &nbsp;&nbsp;Require conversation resolution | ✅ |
-| &nbsp;&nbsp;Allowed merge methods | **Merge** only — squash/rebase would give `main` commits `develop` doesn't have |
-| **Require status checks to pass** | ✅ → **`PR source`**, **`Lint`**, **`CI`** — source **GitHub Actions** |
-| &nbsp;&nbsp;Require branches to be up to date | ❌ — `main` only ever receives `develop` |
+| Ruleset | Target | Enforces |
+| --- | --- | --- |
+| `protect-main` | `main` | no creation/deletion/force-push · pull request required (merge commits only, conversations resolved) · required check **`CI passed`** (source GitHub Actions) |
+| `protect-develop` | `develop` | no deletion/force-push · pull request required (merge commits only, conversations resolved) · required check **`CI passed`**, branch up to date |
+| `protect-tags` | `v*` | no tag updates or deletion — a released version is immutable |
 
-> **"Only `develop` may open PRs into `main`"** isn't expressible as a ruleset.
-> The `PR source` check in [`workflows/branch-policy.yml`](workflows/branch-policy.yml)
-> fails any PR into `main` whose head isn't this repo's `develop`; requiring it
-> makes the rule binding.
-
-### Ruleset `protect-develop`
-
-Target `develop`: **Restrict deletions** ✅, **Block force pushes** ✅. No PR or
-status-check requirement — direct pushes are allowed.
-
-### Other settings
-
-- **General:** default branch **`main`**; *Allow merge commits* ✅ (squash ✅
-  for Dependabot PRs into `develop`); *Automatically delete head branches* ✅.
-  In the **template repository only**: *Template repository* ✅.
+- Bypass list **empty**; required approvals **0** while solo (raise to 1 and
+  enable *Require review from Code Owners* with a second maintainer — the
+  author cannot approve their own pull request).
+- **"Only `develop` may open PRs into `main`"** isn't expressible as a ruleset.
+  The `Verify source branch` job in [`workflows/ci.yml`](workflows/ci.yml)
+  fails any PR into `main` whose head isn't this repo's `develop`; requiring
+  `CI passed` makes the rule binding.
+- **General:** default branch **`develop`**; *Allow merge commits* ✅ (squash
+  and rebase ❌); *Automatically delete head branches* ✅. In the **template
+  repository only**: *Template repository* ✅.
 - **Advanced Security:** private vulnerability reporting, dependency graph,
-  Dependabot alerts + malware alerts, CodeQL default setup, secret protection +
-  push protection — all ✅. **Dependabot security updates ❌**: GitHub opens
-  those PRs against `main`, which only accepts PRs from `develop`.
-- **Secrets and variables → Actions:** variable **`DOCKERHUB_USERNAME`**,
-  secret **`DOCKERHUB_TOKEN`** (Docker Hub access token, Read & Write);
-  optional secret `CODECOV_TOKEN`.
+  Dependabot alerts + security updates, CodeQL default setup, secret
+  protection + push protection — all ✅. Security updates open against
+  `develop`, the default branch, like the weekly version updates.
+- **Secrets and variables → Actions:** nothing is required. Optional: variable
+  **`PUBLISH_IMAGE`** (`ghcr` or `dockerhub`; unset publishes nothing) and, for
+  Docker Hub only, variable `DOCKERHUB_USERNAME` + secret `DOCKERHUB_TOKEN`; optional
+  secret `CODECOV_TOKEN`.
 
 ---
 
@@ -82,12 +80,15 @@ status-check requirement — direct pushes are allowed.
 
 | Workflow | Triggers | What |
 | --- | --- | --- |
-| [`ci.yml`](workflows/ci.yml) → **`CI`** (required) | push `develop`, PR → `develop` | tiered project CI (below) |
-| [`lint.yml`](workflows/lint.yml) → **`Lint`** (required) | push `develop`, PR → `develop` | hadolint · ShellCheck · actionlint · zizmor · `docker compose config` · cspell · markdownlint |
-| [`branch-policy.yml`](workflows/branch-policy.yml) → **`PR source`** (required) | PR → `main` | only `develop` may open PRs into `main` |
-| [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | publish the production image (skips until the project is initialised and `DOCKERHUB_USERNAME` is set) |
-| [`dockerhub-description.yml`](workflows/dockerhub-description.yml) | push `main` touching `README.md`, dispatch | README → the image's Docker Hub page |
-| [`labels.yml`](workflows/labels.yml) | push `main` touching labels, PR dry run, dispatch | `.github/labels.yml` → GitHub labels |
+| [`ci.yml`](workflows/ci.yml) → **`CI passed`** (required) | PR → `develop` / `main` | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs (below) |
+| [`lint.yml`](workflows/lint.yml) | called by `ci.yml`, dispatch | hadolint · ShellCheck · actionlint · zizmor · `docker compose config` · cspell · markdownlint |
+| [`pr-labels.yml`](workflows/pr-labels.yml) | PR opened / edited | labels from the Conventional Commit title (drive the release notes) |
+| [`labels.yml`](workflows/labels.yml) | push `develop` / `main` touching labels, PR validation, dispatch | `.github/labels.yml` → GitHub labels (`gh` CLI, skip-delete) |
+| [`bootstrap-main.yml`](workflows/bootstrap-main.yml) | push `develop`, dispatch | projects only: creates `main` from `develop` once |
+| [`release.yml`](workflows/release.yml) | push `main` | GitHub Release with generated notes (template: `vYYYY.MM.DD`; project: `pyproject.toml` version, then starts `docker.yml` on the tag) |
+| [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | **opt-in** (`PUBLISH_IMAGE`): publish the production image to GHCR or Docker Hub; ends green with a notice when unset or until the project is initialised |
+| [`dockerhub-description.yml`](workflows/dockerhub-description.yml) | push `main` touching `README.md`, dispatch | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → the image's Docker Hub page |
+| [`image-contract.yml`](workflows/image-contract.yml) | weekly, dispatch | template only: PostgreSQL / Python versions, image reference and shell aliases vs `django-devcontainer` (not required) |
 
 ### CI tiers — never fails on a fresh template
 
@@ -97,15 +98,20 @@ status-check requirement — direct pushes are allowed.
 | 2 · pre-Django | `pyproject.toml` | `pre-commit` · `pip-audit` |
 | 3 · Django | `manage.py` + `uv.lock` | `pre-commit` · `mypy` · `pytest` (PostgreSQL 18 service) · `Django deploy check` (+ missing migrations) · `pip-audit` · `Production image` |
 
-The `CI` gate job passes when every applicable job passed — skipped jobs are
-simply not applicable at the current tier.
+The `CI passed` gate job passes when every applicable job passed — skipped
+jobs are simply not applicable at the current tier.
 
 ### Releases
 
-Merging `develop` → `main` publishes
-`docker.io/<DOCKERHUB_USERNAME>/<repo>` as `latest` + `sha-<short>` (native
-amd64 + arm64, SBOM, Sigstore-signed provenance) and scans it with Trivy.
-Tag a release `vX.Y.Z` on `main` to add `X.Y.Z` and `X.Y` tags.
+CI builds and smoke-tests the production image on every pull request and pushes
+nothing. A project that opted in to publishing (`PUBLISH_IMAGE`) gets, on a merge
+`develop` → `main`, `<registry>/<repo>` as `latest` + `sha-<short>` (native
+amd64 + arm64, SBOM, Sigstore-signed provenance), scanned with Trivy.
+In a project the same merge runs **Release**: when `version` in `pyproject.toml`
+is new it publishes `vX.Y.Z` (notes generated from the merged pull requests,
+grouped by label — [`release.yml`](release.yml) lists the categories) and, when
+publishing is on, starts `docker.yml` on that tag for the `X.Y.Z` and `X.Y` image tags. In the template
+repository **Release** publishes `vYYYY.MM.DD`.
 
 ### Workflow hardening (keep it when editing)
 
@@ -122,15 +128,16 @@ Tag a release `vX.Y.Z` on `main` to add `X.Y.Z` and `X.Y` tags.
 
 ## 4. Dependency automation — [`dependabot.yml`](dependabot.yml)
 
-Weekly (Monday 09:00 UTC), PRs against **`develop`**, **7-day cooldown**:
+Weekly (Monday 09:00 UTC), grouped, PRs against **`develop`**, **7-day
+cooldown**:
 
 | Ecosystem | Scans |
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
 | `docker` | `docker/Dockerfile.prod` — python base + uv (tag + digest) |
-| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit (tag + digest) |
+| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image** once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
-| `uv` | `pyproject.toml` + `uv.lock` — **uncomment the block after `uv init`** |
+| `uv` | `pyproject.toml` + `uv.lock` — enabled automatically by `scripts/init-django.sh` |
 
 Every label Dependabot applies exists in [`labels.yml`](labels.yml).
 
@@ -150,7 +157,7 @@ Repository linters (from any machine with Docker):
 
 ```bash
 docker run --rm -i hadolint/hadolint hadolint - < docker/Dockerfile.prod
-docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/*.sh
+docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/*.sh .github/scripts/*.sh
 docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
 docker compose config --quiet
 ```
