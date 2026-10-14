@@ -195,6 +195,20 @@ or `dockerhub` (needs `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`); see
 [3.2](#32-settings-to-apply). Leave it unset to publish nothing, for example until you
 have chosen where the project runs. Each project decides this on its own.
 
+**9. Start the API contract** (when the project has its first endpoint). The three API CI jobs and
+the release asset are off until `openapi/schema.yaml` exists, so a new project stays green:
+
+```bash
+bash scripts/schema.sh generate      # writes openapi/schema.yaml from the code
+git add openapi/schema.yaml          # commit it on a topic branch with the endpoint
+```
+
+From then on every pull request checks that the schema is current, well formed and not breaking,
+and every project release carries it as the `openapi.yaml` asset for the client developer. Workflow:
+[`docs/api-workflow.md`](https://github.com/alihaidar0/django-template/blob/main/docs/api-workflow.md);
+the client side:
+[`docs/consuming-the-api.md`](https://github.com/alihaidar0/django-template/blob/main/docs/consuming-the-api.md).
+
 ### 2.4 First run: check that everything works
 
 Open a **second terminal** in the container (the first one runs `runserver`) and
@@ -737,7 +751,8 @@ Merging `develop` → `main` publishes the production image
 
 - in a **project**: when `version` in `pyproject.toml` is new, it publishes
   `vX.Y.Z` with notes generated from the merged pull requests (grouped by
-  label, see `.github/release.yml`) and starts the image build for the
+  label, see `.github/release.yml`), attaches `openapi/schema.yaml` as the
+  `openapi.yaml` asset when the project has one, and starts the image build for the
   `X.Y.Z` / `X.Y` tags. Raise the version in the release pull request.
 - in the **template**: a calendar release `vYYYY.MM.DD`; documentation-only
   promotions publish nothing. The tag tells a project which state of the
@@ -906,7 +921,7 @@ Celery containers; on your host the `.venv` folder stays empty.
 │   ├── ISSUE_TEMPLATE/ · CODEOWNERS · CODE_OF_CONDUCT.md · CONTRIBUTING.md · SECURITY.md · pull_request_template.md
 │   └── actionlint.yaml · dependabot.yml · labels.yml · release.yml
 ├── .vscode/launch.json · tasks.json  # debug configs + task shortcuts
-├── docs/                             # github-setup.md · api-workflow.md · api-conventions.md
+├── docs/                             # github-setup.md · api-workflow.md · api-collaboration.md · consuming-the-api.md · api-conventions.md
 ├── .spectral.yaml                    # API style rules (Spectral)
 ├── docker/Dockerfile.prod            # production image
 ├── scripts/

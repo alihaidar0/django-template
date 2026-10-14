@@ -114,7 +114,8 @@ nothing. A project that opted in to publishing (`PUBLISH_IMAGE`) gets, on a merg
 `develop` → `main`, `<registry>/<repo>` as `latest` + `sha-<short>` (native
 amd64 + arm64, SBOM, Sigstore-signed provenance), scanned with Trivy.
 In a project the same merge runs **Release**: when `version` in `pyproject.toml`
-is new it publishes `vX.Y.Z` (notes generated from the merged pull requests,
+is new it publishes `vX.Y.Z` (with `openapi/schema.yaml` attached as `openapi.yaml` when the
+project has one; notes generated from the merged pull requests,
 grouped by label — [`release.yml`](release.yml) lists the categories) and, when
 publishing is on, starts `docker.yml` on that tag for the `X.Y.Z` and `X.Y` image tags. In the template
 repository **Release** publishes `vYYYY.MM.DD`.

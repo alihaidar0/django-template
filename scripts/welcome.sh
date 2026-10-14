@@ -58,6 +58,10 @@ if [[ -f "$WORKSPACE/manage.py" ]]; then
         "Django   http://localhost:8000" \
         "Mailpit  http://localhost:8025" \
         "Flower   celery -A config flower --port=5555  →  http://localhost:5555"
+    if [[ ! -f "$WORKSPACE/openapi/schema.yaml" ]]; then
+        step "API contract (with the first endpoint)" \
+            "bash scripts/schema.sh generate   then commit openapi/schema.yaml"
+    fi
     if ! grep -qE 'django-devcontainer:[^[:space:]]*@sha256:' "$WORKSPACE/docker-compose.yml" 2>/dev/null; then
         step "Freeze the toolchain (once)" \
             "bash scripts/pin-image.sh   pins the dev image to an exact build"
@@ -106,6 +110,8 @@ else
         "bash scripts/init-readme.sh --description \"What it does.\""
     step "9. Optional: publish the production image" \
         "set the repository variable PUBLISH_IMAGE to ghcr or dockerhub (README → 3.2)"
+    step "10. With the first endpoint: start the API contract" \
+        "bash scripts/schema.sh generate   then commit openapi/schema.yaml (README → step 9)"
 fi
 
 step "Commit on a topic branch — develop and main are protected" \
