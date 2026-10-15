@@ -51,6 +51,8 @@ per project in six commands after the container starts.
   GitHub Container Registry or Docker Hub is opt-in, per project.
 - **Releases and labels as code:** labels sync from `.github/labels.yml`, pull
   requests are labelled from their title, release notes are generated from them.
+  In a project, GitHub Releases stay **drafts** you publish by hand: a rolling
+  "Staging" draft for `develop` and the `v<version>` draft for `main`.
 - **Dependabot** for Actions, Docker images, compose services (including the
   dev image), pre-commit hooks and Python packages — weekly, grouped, with a
   7-day cooldown, always pull requests into `develop`.
@@ -368,7 +370,7 @@ explicitly:
 | Workflow | Extra permission | Why |
 | --- | --- | --- |
 | `bootstrap-main.yml` | `contents: write` | create the `main` branch |
-| `release.yml` | `contents: write` (+ `actions: write` in a project) | publish the release; start `docker.yml` on the new tag |
+| `release.yml` | `contents: write` | template: publish the calendar release; project: create and refresh the draft releases and attach the API contract |
 | `labels.yml` | `issues: write` | create the labels |
 | `pr-labels.yml` | `pull-requests: write` | add labels from the PR title |
 | `docker.yml` | `id-token: write`, `security-events: write` | keyless signing; upload the scan |
@@ -417,6 +419,10 @@ stays readable from any branch):
 | --- | --- | --- | --- |
 | `production` | Selected branches → `main` only | Required reviewers (you or the team, once there is a second maintainer); Prevent self-review; Allow administrators to bypass **off** | the cloud credentials and project/region variables |
 | `staging` (optional) | Selected branches → `develop` | none | the staging credentials |
+
+The environment names mirror the branches: `develop` is staging and `main` is production. Deployment
+itself (the hosting target, the environments with their secrets and the deploy workflows) is a separate,
+later step that each project takes on its own; the draft releases need none of it.
 
 Never commit a key, token or `.env` value; any file in the repository is
 readable by everyone who can read the repository.
@@ -538,7 +544,7 @@ feat/*  fix/*  docs/*  ci/*  chore/*  deps/*
      develop   ◀── Dependabot update pull requests
         │  pull request (develop → main only), merge commit
         ▼
-       main    ──▶ production image published · GitHub Release
+       main    ──▶ production image published · draft release v<version> (you publish it)
 ```
 
 1. Start from an up-to-date `develop`, create a topic branch, commit, push:
@@ -557,7 +563,9 @@ feat/*  fix/*  docs/*  ci/*  chore/*  deps/*
 3. Once a week, review the Dependabot pull requests (they target `develop`),
    merge the ones you want, then open **one** pull request `develop` → `main`
    (title `release: <summary>`) and merge it with a merge commit. That push
-   publishes the production image and the GitHub Release.
+   publishes the production image and refreshes the draft release `v<version>`;
+   when the version is final, publish the draft yourself (see
+   [Releases](#releases) below). Merges into `develop` refresh the "Staging" draft.
 
 A pull request into `main` from any other branch fails **CI passed**. Squash and
 rebase merges are off: squashing into `main` rewrites `develop`'s commits and
@@ -721,7 +729,7 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | `labels.yml` | push to `develop`/`main` touching `labels.yml` | labels as code (`gh`); removes GitHub's five default labels; a manual run with `prune` removes every label not in the file |
 | `bootstrap-main.yml` | push to `develop` (projects) | creates `main` once |
 | `docker.yml` | push to `main`, tags, dispatch | **opt-in** (`PUBLISH_IMAGE`): publishes + scans the production image |
-| `release.yml` | push to `main` | GitHub Release with generated notes |
+| `release.yml` | push to `main` and `develop` | template: calendar release on `main`; project: draft releases (`Staging` on `develop`, `v<version>` on `main`) with generated notes |
 | `dockerhub-description.yml` | push to `main` touching `README.md` | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → Docker Hub |
 | `image-contract.yml` | weekly (template only) | template vs dev image: PostgreSQL, Python, image, aliases |
 
@@ -751,14 +759,26 @@ SHA and every workflow runs with least-privilege permissions.
 Merging `develop` → `main` publishes the production image
 (`latest` + `sha-<short>`) and runs **Release**:
 
-- in a **project**: when `version` in `pyproject.toml` is new, it publishes
-  `vX.Y.Z` with notes generated from the merged pull requests (grouped by
-  label, see `.github/release.yml`), attaches `openapi/schema.yaml` as the
-  `openapi.yaml` asset when the project has one, and starts the image build for the
-  `X.Y.Z` / `X.Y` tags. Raise the version in the release pull request.
-- in the **template**: a calendar release `vYYYY.MM.DD`; documentation-only
-  promotions publish nothing. The tag tells a project which state of the
-  template it started from.
+- in a **project**: **Release** never publishes by itself. `scripts/release-draft.sh`
+  keeps two drafts, visible only to people with write access, and both carry
+  `openapi/schema.yaml` as the `openapi.yaml` asset when the project has one:
+  - a push to `develop` replaces the notes and files of one rolling pre-release draft,
+    **Staging** (tag `staging`). Never publish it; if it is published by mistake the next
+    run fails and asks you to delete it;
+  - a push to `main` creates or refreshes the draft `v<version>` for the `version` in
+    `pyproject.toml`, with notes generated from the merged pull requests (grouped by
+    label, see `.github/release.yml`). When the version is final, open the draft on the
+    Releases page and click **Publish release**: that creates the tag `v<version>`, which
+    starts **Docker** for the `X.Y.Z` / `X.Y` image tags when `PUBLISH_IMAGE` is set. A
+    published release (and its tag) is immutable, so check the version and notes first and
+    raise the version to prepare the next one. A published `v<version>` is left alone.
+  A client repository that reads the newest *published* release sees a version only after
+  it is published; clients pin a published tag or a commit. Deployment (hosting,
+  environments with secrets, deploy workflows) is a separate, later step per project; the
+  drafts need none of it.
+- in the **template**: a calendar release `vYYYY.MM.DD`, published on a merge into `main`;
+  documentation-only promotions publish nothing, and a push to `develop` creates nothing.
+  The tag tells a project which state of the template it started from.
 
 ### Production image
 
@@ -776,7 +796,7 @@ running as the non-root user `app`:
 - CI builds it and smoke-tests it (`/healthz`, CSP header, non-root user) on every
   pull request, without pushing it. When the project opts in (`PUBLISH_IMAGE`), a merge
   into `main` publishes it as `latest` + `sha-<short>`, plus `X.Y.Z` / `X.Y` when the
-  **Release** workflow tags the `pyproject.toml` version.
+  `v<version>` release draft is published (that creates the tag).
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -913,7 +933,7 @@ Celery containers; on your host the `.venv` folder stays empty.
 │   │   ├── pr-labels.yml             # labels from the Conventional Commit title
 │   │   ├── labels.yml                # labels.yml → GitHub labels
 │   │   ├── bootstrap-main.yml        # projects: creates `main` from `develop` once
-│   │   ├── release.yml               # GitHub Release (template: vYYYY.MM.DD, project: pyproject version)
+│   │   ├── release.yml               # template: vYYYY.MM.DD release; project: draft releases (release-draft.sh)
 │   │   ├── docker.yml                # publish + scan the production image
 │   │   ├── dockerhub-description.yml # README → Docker Hub
 │   │   └── image-contract.yml        # template only: weekly check against the dev image
@@ -931,6 +951,7 @@ Celery containers; on your host the `.venv` folder stays empty.
 │   ├── pin-image.sh                  # freeze the dev image to python-X.Y.Z.R@sha256:…
 │   ├── set-python.sh                 # move the production image to the newest Python minor Django supports
 │   ├── schema.sh                     # generate / check openapi/schema.yaml (the API contract)
+│   ├── release-draft.sh              # keep the Staging and v<version> draft releases (projects)
 │   ├── init-readme.sh                # replace this guide with your project's README
 │   ├── post-create.sh                # container created: .venv volume owner, uv sync, git hooks
 │   ├── pin-ssh-key.sh                # every start: map the remote alias to github.com, pin this repo's SSH key
@@ -1038,7 +1059,17 @@ The template is a project like any other: topic branch → pull request into
   minor in the dev image); fix it with a topic branch, using `bash scripts/set-python.sh` for Python.
 - **Releases:** each promotion to `main` that changes more than documentation
   publishes a calendar release (`vYYYY.MM.DD`) that projects record as their
-  starting point.
+  starting point. A push to `develop` creates nothing in the template. The
+  draft-release flow (`scripts/release-draft.sh`, `app-draft` job) is inert here and only
+  runs in generated projects.
+- **Django 6.1 hold:** `django-celery-beat` (2.9.0, in the quickstart) requires
+  `Django<6.1`, so a Django 6.1 update cannot resolve and would fail Dependabot's
+  whole grouped `uv` update. The `uv` block therefore ignores `django` `>=6.1`. It lives
+  once, as the commented copy at the end of `.github/dependabot.yml`;
+  `scripts/init-django.sh` uncomments that block in a project, so generated projects get
+  the same entry. When `django-celery-beat` supports Django 6.1, remove the `ignore`
+  entry from that copy and let Dependabot propose Django 6.1; also revisit the
+  `django>=6.0` hint in `scripts/init-django.sh`.
 
 - **Settings tables in two places:** the GitHub settings, Actions permissions, environments,
   Advanced Security and ruleset tables appear in this README (section 3) and in

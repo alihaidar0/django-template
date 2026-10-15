@@ -20,9 +20,10 @@
 #  deployment workflow). Nothing in the template assumes where a project runs.
 #
 #  Triggers:
-#    - Push to main (every merge develop → main is a release)
-#    - Tag v*.*.*                 → adds the semver tags (started by the Release
-#                                   workflow, whose tag does not trigger this one)
+#    - Push to main (a merge develop → main builds the image; the release itself
+#                    stays a draft until the owner publishes it)
+#    - Tag v*.*.*                 → adds the semver tags (publishing the release draft
+#                                   creates the tag as the owner, which starts this)
 #    - Manual dispatch
 #
 #  No re-test here: the image was built and smoke-tested by CI on the pull
@@ -168,7 +169,7 @@ jobs:
           exit-code: "0"
 
       - name: Upload Trivy results to Security tab
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           sarif_file: trivy-results.sarif
 
