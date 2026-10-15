@@ -132,7 +132,8 @@ uv init --bare
 
 # 2. production dependencies
 uv add django djangorestframework "psycopg[binary,pool]" dj-database-url \
-       redis celery django-celery-beat gunicorn whitenoise drf-spectacular django-cors-headers
+       redis celery django-celery-beat gunicorn whitenoise drf-spectacular django-cors-headers \
+       "drf-standardized-errors[openapi]"
 
 # 3. dev / test dependencies
 uv add --dev pytest pytest-django pytest-cov factory-boy faker \
@@ -260,6 +261,7 @@ git switch -                            # back to your topic branch
 | `users/` app | Custom user model (`AUTH_USER_MODEL = "users.User"`), with its first migration already generated — Django's own docs call swapping it in later "a substantial task" |
 | `config/celery.py` | Celery app (`celery -A config`), `django-celery-beat` scheduler |
 | API contract | `drf-spectacular` settings (schema class, title, version; the schema is **not** served) and `scripts/schema.sh` to write and verify `openapi/schema.yaml`, the file an API client builds against |
+| API errors | One error body for every API error (`drf-standardized-errors`), documented in the contract so generated clients get a typed error model; `config/api_errors.py` holds the shared 400 schema |
 | logging | everything to stdout, level via `LOG_LEVEL` |
 | `pyproject.toml` | ruff rules (incl. bugbear, bandit, Django), **mypy strict** with django-stubs, pytest-django, coverage |
 | `.github/dependabot.yml` | the Python (`uv`) ecosystem is switched on |
