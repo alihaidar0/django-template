@@ -42,10 +42,12 @@ for pkg in django dj-database-url celery whitenoise; do
     fi
 done
 # The generated settings use Django 6's Content Security Policy middleware. Django
-# 6.1 supports Python 3.12–3.14, so it fits the dev image's Python line.
+# 6.0 supports Python 3.12–3.14, so it fits the dev image's Python line. The hint
+# says 6.0, not 6.1: django-celery-beat (a quickstart dependency) caps Django below
+# 6.1 for now, so 'django>=6.1' would not resolve.
 django_major="$(uv pip show django 2>/dev/null | sed -nE 's/^Version: ([0-9]+)\..*/\1/p')"
 if [[ -z "$django_major" || "$django_major" -lt 6 ]]; then
-    echo "❌ Django 6.0 or newer is required (Content Security Policy) — found ${django_major:-none}. Run: uv add 'django>=6.1'"
+    echo "❌ Django 6.0 or newer is required (Content Security Policy) — found ${django_major:-none}. Run: uv add 'django>=6.0'"
     exit 1
 fi
 
