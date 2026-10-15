@@ -132,7 +132,7 @@ uv init --bare
 
 # 2. production dependencies
 uv add django djangorestframework "psycopg[binary,pool]" dj-database-url \
-       redis celery django-celery-beat gunicorn whitenoise drf-spectacular
+       redis celery django-celery-beat gunicorn whitenoise drf-spectacular django-cors-headers
 
 # 3. dev / test dependencies
 uv add --dev pytest pytest-django pytest-cov factory-boy faker \
@@ -331,7 +331,7 @@ which also travels with your project.
 | Pull Requests → Allow auto-merge | On |
 | Pull Requests → Automatically delete head branches | On |
 | Pull Requests → Allow forking (private projects) | Off |
-| Releases → Enable release immutability (if offered) | On |
+| Releases → Enable release immutability (if offered) | **On**: it is what lets a client verify a release asset (`gh release verify-asset`), see `docs/consuming-the-api.md` |
 | Pages | Off (nothing is published as a site) |
 | Webhooks, Codespaces prebuilds | none |
 

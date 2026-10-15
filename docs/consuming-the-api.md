@@ -10,8 +10,10 @@ In the commands, `OWNER/BACKEND_REPO` is the backend repository.
 ## What you consume
 
 Every release of the backend (`vX.Y.Z`) carries the contract as a release asset named
-**`openapi.yaml`**, identical to `openapi/schema.yaml` at that tag. The release is immutable, so the
-file for a tag never changes. Use the release notes to see what changed: breaking changes carry the
+**`openapi.yaml`**, identical to `openapi/schema.yaml` at that tag. The backend repository must have
+**release immutability** turned on (Settings → General → Releases): the release is then immutable, so the
+file for a tag never changes, and a client can check it with `gh release verify-asset`. Without that
+setting the contract can still be downloaded, but not verified. Use the release notes to see what changed: breaking changes carry the
 `breaking change` label.
 
 ## Get and pin a version
@@ -79,6 +81,17 @@ const { data, error } = await client.GET("/api/v1/items/");
 `data` is typed from the contract and is only present on a `2xx` response; `error` is only present on
 `4xx` or `5xx`. Another generator (Orval, or `openapi-generator`) works the same way: the pinned file is the input.
 
+### What the generated client looks like
+
+Checked with a sample API built on the template's defaults (a model viewset with pagination, an enum field, a
+nullable field and a decimal field): `swagger_parser` generated one REST client with its requests and the data
+classes, including a `Paginated…List` class (`count`, `next`, `previous`, `results`) for every list endpoint and a
+separate class for each enum; `build_runner` built it and `dart analyze` reported no issues. Two shapes to know:
+
+- A DRF decimal field is described as `type: string` with `format: decimal`, so it arrives as a string:
+  parse it where you need a number.
+- A nullable field is marked `nullable: true` in the contract and is nullable in the generated class.
+
 ## Check that the client matches the contract
 
 Commit the generated code, so a contract change shows up as a reviewable diff, and add a CI step that
@@ -98,6 +111,22 @@ npx openapi-typescript api/openapi.yaml -o src/api/schema.d.ts && git diff --exi
 
 Check for a new release regularly (the weekly sync is a good moment); the backend developer announces
 removals in the issue and the release notes before they happen.
+
+## Running the client against a local backend
+
+The dev stack publishes the Django dev server on the host at port 8000 (start it with `pmr`, which runs
+`runserver 0.0.0.0:8000`). How each client reaches it:
+
+| Client | Base URL | What the backend already allows |
+| --- | --- | --- |
+| Android emulator | `http://10.0.2.2:8000` | `ALLOWED_HOSTS` includes `10.0.2.2` (the emulator's alias for the host) |
+| Flutter web (`flutter run -d web-server`, port 8080) or any browser app | `http://localhost:8000` | `CORS_ALLOWED_ORIGINS` includes `http://localhost:8080` and `http://127.0.0.1:8080` |
+| iOS simulator, desktop | `http://localhost:8000` | nothing extra |
+| A physical phone | not reachable directly: the port is published on the host's loopback only | with a USB cable, `adb reverse tcp:8000 tcp:8000` makes `localhost:8000` on the phone reach the host (check the current `adb` documentation) |
+
+Both settings come from environment variables with these development defaults in `docker-compose.yml`;
+**production allows no cross-origin browser calls** until the project lists its own origins in
+`CORS_ALLOWED_ORIGINS`. Native mobile apps do not use CORS.
 
 ## Configuration to keep out of the generated code
 
