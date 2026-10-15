@@ -12,7 +12,8 @@
 #    config/settings/testing.py      fast hashing    (pytest / CI)
 #    config/celery.py                Celery app      (`celery -A config`)
 #    config/health.py                GET /healthz for platform probes
-#    users/                          custom user model (AUTH_USER_MODEL), from the first migration
+#    config/api_errors.py            the shared 400 error schema of the API contract
+#    users/                         custom user model (AUTH_USER_MODEL), from the first migration
 #    pyproject.toml                  ruff · mypy (django-stubs) · pytest · coverage
 #
 #  Settings read the environment that docker-compose.yml / .env provide:
@@ -88,6 +89,7 @@ INSTALLED_APPS += [
     "corsheaders",
     "rest_framework",
     "drf_spectacular",
+    "drf_standardized_errors",
     "django_celery_beat",
     "users",
 ]
@@ -103,9 +105,26 @@ AUTH_USER_MODEL = "users.User"
 # and committed; it is the contract with every API client. The schema is NOT
 # served by the app: no SpectacularAPIView is wired into the URLconf, so
 # nothing is exposed in production unless the project adds it on purpose.
-REST_FRAMEWORK = {
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+#
+# One error body for every API error (drf-standardized-errors): {"type", "errors": [{"code",
+# "detail", "attr"}]}. Its AutoSchema documents the error responses of each operation, so
+# generated clients get a typed error model. Only errors raised inside DRF views are covered;
+# Django's own pages (a disallowed host, a 404 outside the API) keep their normal responses.
+REST_FRAMEWORK: dict[str, object] = {
+    "DEFAULT_SCHEMA_CLASS": "drf_standardized_errors.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "drf_standardized_errors.handler.exception_handler",
+    # Without this every operation would document a 404 for the ?format= query parameter.
+    "URL_FORMAT_OVERRIDE": None,
 }
+DRF_STANDARDIZED_ERRORS = {
+    # Document only the errors a client acts on; a project that adds a code here also adds
+    # its enum to ENUM_NAME_OVERRIDES below (ErrorCode<status>Enum, e.g. 500 → ServerErrorEnum).
+    "ALLOWED_ERROR_STATUS_CODES": ["400", "401", "403", "404", "429"],
+    # One shared 400 schema. The package's default documents every field's error codes per
+    # operation, which makes generated clients grow by dozens of classes per endpoint.
+    "ERROR_SCHEMAS": {"400": "config.api_errors.Error400ResponseSerializer"},
+}
+_ERROR_ENUMS = "drf_standardized_errors.openapi_serializers"
 SPECTACULAR_SETTINGS = {
     "TITLE": "API",  # the project's own name
     "DESCRIPTION": "The HTTP API of this project, generated from its code.",
@@ -115,6 +134,17 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     # Keep /api/v1/ out of operation ids and tags (path versioning).
     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]",
+    # Name the error-code enums once instead of once per operation (keeps the schema free of
+    # drf-spectacular warnings, which fail scripts/schema.sh).
+    "ENUM_NAME_OVERRIDES": {
+        "ClientErrorEnum": f"{_ERROR_ENUMS}.ClientErrorEnum.choices",
+        "ErrorCode401Enum": f"{_ERROR_ENUMS}.ErrorCode401Enum.choices",
+        "ErrorCode403Enum": f"{_ERROR_ENUMS}.ErrorCode403Enum.choices",
+        "ErrorCode404Enum": f"{_ERROR_ENUMS}.ErrorCode404Enum.choices",
+        "ErrorCode429Enum": f"{_ERROR_ENUMS}.ErrorCode429Enum.choices",
+    },
+    # Replaces drf-spectacular's own enum hook (the package's hook calls the same logic).
+    "POSTPROCESSING_HOOKS": ["drf_standardized_errors.openapi_hooks.postprocess_schema_enums"],
 }
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -313,6 +343,32 @@ class HealthCheckMiddleware:
         return self.get_response(request)
 PY
 
+echo "▶ Adding the shared API error schema (config/api_errors.py)"
+cat > config/api_errors.py << 'PY'
+"""The one error body of the API, as documented in the OpenAPI contract.
+
+drf-standardized-errors produces the bodies at runtime; DRF_STANDARDIZED_ERRORS["ERROR_SCHEMAS"]
+points here so every operation shares ONE 400 schema instead of a generated one per endpoint and
+field. ``attr`` is the field the error belongs to (dotted for nested data) or null.
+"""
+
+from drf_standardized_errors.openapi_serializers import ClientErrorEnum, ValidationErrorEnum
+from rest_framework import serializers
+
+
+class Error400Serializer(serializers.Serializer):  # type: ignore[misc]
+    code = serializers.CharField()
+    detail = serializers.CharField()
+    attr = serializers.CharField(allow_null=True)
+
+
+class Error400ResponseSerializer(serializers.Serializer):  # type: ignore[misc]
+    """``validation_error``: invalid input. ``client_error``: an unreadable request body."""
+
+    type = serializers.ChoiceField(choices=[*ValidationErrorEnum.choices, *ClientErrorEnum.choices])
+    errors = Error400Serializer(many=True)
+PY
+
 echo "▶ Configuring ruff, mypy (django-stubs), pytest-django and coverage in pyproject.toml"
 if ! grep -q '^\[tool.ruff\]' pyproject.toml; then
     cat >> pyproject.toml << 'TOML'
@@ -340,9 +396,10 @@ plugins = ["mypy_django_plugin.main"]
 exclude = ['^\.venv/', '/migrations/']
 
 # django-stubs resolves the whole app registry for AUTH_USER_MODEL (users.User);
-# django-celery-beat ships no type stubs / py.typed marker, so it's untyped either way.
+# django-celery-beat and Django REST framework ship no type stubs / py.typed marker, so
+# they're untyped either way.
 [[tool.mypy.overrides]]
-module = "django_celery_beat.*"
+module = ["django_celery_beat.*", "rest_framework.*"]
 ignore_missing_imports = true
 
 [tool.django-stubs]

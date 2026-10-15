@@ -92,6 +92,11 @@ separate class for each enum; `build_runner` built it and `dart analyze` reporte
   parse it where you need a number.
 - A nullable field is marked `nullable: true` in the contract and is nullable in the generated class.
 
+Errors come out as a few shared classes, not one per endpoint: `Error400Response` (`type`, `errors`) and its
+`Error400` items (`code`, `detail`, `attr`), plus `ErrorResponse401`, `ErrorResponse404` and so on. With
+these defaults the whole sample API generated 13 data classes. `type` is an enum, `attr` is nullable.
+Decode an error response body into these classes when the status is `4xx` and the body is JSON.
+
 ## Check that the client matches the contract
 
 Commit the generated code, so a contract change shows up as a reviewable diff, and add a CI step that
