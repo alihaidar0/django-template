@@ -26,7 +26,8 @@ RFC 9457 problem details (`application/problem+json`), which obsoletes RFC 7807:
 }
 ```
 
-Implement it once in a DRF exception handler (`REST_FRAMEWORK["EXCEPTION_HANDLER"]`) and describe
+The template does **not** ship this handler: it is a convention the project implements before a client
+relies on it. Implement it once in a DRF exception handler (`REST_FRAMEWORK["EXCEPTION_HANDLER"]`) and describe
 it in the schema, so generated clients know the type. Validation errors keep field names as keys
 under `errors`.
 

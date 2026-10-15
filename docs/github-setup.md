@@ -51,7 +51,7 @@ required **CI passed** check.
 | Pull Requests → Allow auto-merge | On |
 | Pull Requests → Automatically delete head branches | On |
 | Pull Requests → Allow forking (private projects) | Off |
-| Releases → Enable release immutability (if offered) | On |
+| Releases → Enable release immutability (if offered) | **On**: it is what lets a client verify a release asset (`gh release verify-asset`), see `docs/consuming-the-api.md` |
 | Pages | Off (nothing is published as a site) |
 | Webhooks, Codespaces prebuilds | none |
 

@@ -378,7 +378,7 @@ jobs:
         run: |
           uv init --bare --name sample-project
           uv add django djangorestframework 'psycopg[binary,pool]' dj-database-url \
-                 redis celery django-celery-beat gunicorn whitenoise drf-spectacular
+                 redis celery django-celery-beat gunicorn whitenoise drf-spectacular django-cors-headers
           uv add --dev pytest pytest-django pytest-cov factory-boy faker \
                        mypy ruff django-stubs celery-types flower pip-audit ipython
           bash scripts/init-django.sh
