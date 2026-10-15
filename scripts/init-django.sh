@@ -70,6 +70,9 @@ SECRET_KEY = os.environ.get("SECRET_KEY", SECRET_KEY)
 DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes", "on"}
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
+# Browser origins allowed to call the API (django-cors-headers). Empty by default: a project
+# lists the origins of its own web client; native mobile apps do not need CORS.
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 DATABASES = {
     "default": dict(
@@ -82,6 +85,7 @@ DATABASES = {
 }
 
 INSTALLED_APPS += [
+    "corsheaders",
     "rest_framework",
     "drf_spectacular",
     "django_celery_beat",
@@ -121,6 +125,12 @@ MEDIA_ROOT = BASE_DIR / "media"
 MIDDLEWARE.insert(
     MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,
     "whitenoise.middleware.WhiteNoiseMiddleware",
+)
+# CORS headers must be added before any middleware that can build a response (security redirects,
+# WhiteNoise, CommonMiddleware), so CorsMiddleware goes in front of SecurityMiddleware.
+MIDDLEWARE.insert(
+    MIDDLEWARE.index("django.middleware.security.SecurityMiddleware"),
+    "corsheaders.middleware.CorsMiddleware",
 )
 # /healthz answers before host validation and HTTPS redirects (config/health.py).
 MIDDLEWARE.insert(0, "config.health.HealthCheckMiddleware")

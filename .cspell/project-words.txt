@@ -46,6 +46,7 @@ zizmor
 zizmorcore
 
 # Packages, system, file patterns
+corsheaders
 dmypy
 ehthumbs
 encryptable
@@ -56,6 +57,7 @@ nologin
 nosetests
 passwordless
 pgdata
+viewset
 
 # Environment variables, options, shell
 addopts
