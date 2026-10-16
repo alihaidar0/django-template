@@ -180,10 +180,26 @@ Every label Dependabot applies exists in [`labels.yml`](labels.yml).
 Inside the dev container:
 
 ```bash
-pre-commit run --all-files     # ruff, django-upgrade, file hygiene
+pre-commit run --all-files     # ruff, django-upgrade, file hygiene + the Lint workflow's checks
 pytest                         # once the project exists
 mypy .
 ```
+
+`pre-commit run --all-files` also runs the Lint workflow's spell check (cspell), Markdown (markdownlint),
+ShellCheck, workflow (actionlint, zizmor) and Dockerfile (hadolint) checks, with the same configuration files as
+the workflow. pre-commit keeps each tool in its own cache, Node.js for cspell and markdownlint included, so nothing
+is installed in the dev container. The first run installs them and takes a few minutes; a commit afterwards checks
+only the files being committed and takes a moment.
+
+What the hooks do not cover:
+
+- `docker compose config` stays CI-only: the dev container has no Docker (run it from a machine with Docker, below).
+- zizmor runs with `--offline` locally, because its online audits need a GitHub token, so CI can report more than
+  the hook.
+- The hook revisions are pinned separately from the tools bundled in the workflow's actions, so versions can differ
+  slightly. The Lint workflow stays the gate.
+- pre-commit refuses to run when `.pre-commit-config.yaml` has unstaged changes ("Your pre-commit configuration is
+  unstaged"): commit a change to that file first.
 
 Repository linters (from any machine with Docker):
 
