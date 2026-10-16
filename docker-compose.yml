@@ -65,6 +65,7 @@ x-dev-image: &dev-image
     - .:/workspace:cached
     - venv:/workspace/.venv
     - uv-cache:/home/dev/.cache/uv
+    - pre-commit-cache:/home/dev/.cache/pre-commit
   depends_on:
     db:
       condition: service_healthy
@@ -82,6 +83,7 @@ services:
       - .:/workspace:cached
       - venv:/workspace/.venv
       - uv-cache:/home/dev/.cache/uv
+      - pre-commit-cache:/home/dev/.cache/pre-commit
       - shell-history:/home/dev/.shell_history
     ports:
       - "127.0.0.1:8000:8000"   # Django dev server
@@ -156,4 +158,5 @@ volumes:
   postgres-data:
   redis-data:
   uv-cache:
+  pre-commit-cache:
   shell-history:

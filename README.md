@@ -40,7 +40,8 @@ per project in six commands after the container starts.
   [`alihaidar199527/django-devcontainer`](https://hub.docker.com/r/alihaidar199527/django-devcontainer)
   — **pulled, never built** on your machine.
 - **Full stack pre-wired:** PostgreSQL 18, Redis 8, Celery worker + Beat, Mailpit.
-- **Pure-Python git hooks** (pre-commit + Conventional Commits + branch guards) — no Node.js.
+- **Git hooks** (pre-commit: Conventional Commits, branch guards, and the Lint workflow's checks) — each tool
+  runs from pre-commit's own cache, so nothing extra is installed in the container.
 - **Protected branches:** topic branch → pull request → `develop` → pull request → `main`.
   Nobody pushes to `develop` or `main`; rulesets ship as importable JSON.
 - **One required check, `CI passed`:** lint, commit messages, pre-commit, mypy,
