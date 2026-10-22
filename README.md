@@ -155,8 +155,10 @@ python manage.py runserver 0.0.0.0:8000
 
 Open <http://localhost:8000>. No venv activation needed — the dev image puts
 `/workspace/.venv/bin` first on `PATH`, in every container and shell. The
-Celery worker and Beat start by themselves as soon as the project and its
-dependencies exist.
+Celery worker starts by itself as soon as the project and its dependencies
+exist; Beat keeps its schedule in the database, so it starts once the
+migrations are applied (`python manage.py migrate`). While it waits, its log
+(`docker compose logs celery-beat`) says why.
 
 **4. Check that everything works** — the checklist in [2.4](#24-first-run-check-that-everything-works).
 
@@ -234,7 +236,7 @@ psql "$DATABASE_URL" -c "select version();"   # PostgreSQL 18
 redis-cli -h redis ping                 # PONG
 celery -A config inspect ping           # pong from the worker (it starts a few seconds after the project exists)
 python manage.py sendtestemail you@example.com   # the message appears in Mailpit: http://localhost:8025
-celery -A config flower --port=5555     # Celery monitor: http://localhost:5555 (Ctrl+C to stop)
+celery -A config flower --port=5555     # Celery monitor: http://localhost:5556 (container port 5555, host port 5556; Ctrl+C to stop)
 
 # Git
 ssh -T git@github.com                   # "Hi <account>!" (with a host alias: ssh -T git@<host in your origin URL>)
@@ -247,7 +249,7 @@ git switch -                            # back to your topic branch
 | <http://localhost:8000> | the Django start page (debug mode) |
 | <http://localhost:8000/admin/> | the admin login; your superuser signs in |
 | <http://localhost:8025> | Mailpit with the test email |
-| <http://localhost:5555> | Flower listing the worker |
+| <http://localhost:5556> | Flower listing the worker |
 | VS Code → Run and Debug | *Django: Dev Server* and *Django: Attach Debugger (debugpy)* |
 | VS Code → Terminal → Run Task | *Pytest*, *Ruff*, *Mypy*, *Pre-commit* and *uv* tasks |
 
@@ -893,13 +895,23 @@ digest-pinned. Configuration: every value has a working default in
 | --- | --- | --- |
 | Django | <http://localhost:8000> | `pmr` → `runserver 0.0.0.0:8000` |
 | Mailpit | <http://localhost:8025> (SMTP `1025`) | catches every outgoing email |
-| Flower | <http://localhost:5555> | `celery -A config flower --port=5555` → Celery monitor |
+| Flower | <http://localhost:5556> | `celery -A config flower --port=5555` → Celery monitor (host port 5556: the Android emulator's adb uses 5555) |
 | PostgreSQL 18 | `localhost:5432` | database (`django` / `django_pass` / `django_dev`) |
 | Redis 8 | `localhost:6379` | cache, Celery broker + results |
 | debugpy | `localhost:5678` | VS Code *Django: Attach Debugger* |
 
-Celery worker and Beat wait until `manage.py` and the project's dependencies
-exist, then start on their own (the worker reloads on code changes). Host ports
+The Celery worker waits until `manage.py` and the project's dependencies exist,
+then starts on its own (it reloads on code changes). Beat does the same and also
+waits for the migrations, because its schedule lives in the database
+(`scripts/start-beat.sh`; the log says what it waits for).
+
+**Beat and an external database.** When `DATABASE_URL` points at a host other
+than the `db` service, `localhost` or a unix socket (for example a managed
+staging database), Beat stays idle: it would schedule periodic jobs there on its
+own and the local worker would run them on that data. The log shows only the
+host name. To run it anyway, set `BEAT_ON_EXTERNAL_DATABASE=true` in `.env` and
+recreate the container (`docker compose up -d celery-beat`). The worker is not
+guarded; it only runs tasks that something enqueues. Host ports
 are bound to `127.0.0.1` only. Each project gets its own containers, network
 and volumes (named after the project folder), so several projects can run side
 by side.
