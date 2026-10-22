@@ -57,7 +57,7 @@ if [[ -f "$WORKSPACE/manage.py" ]]; then
     step "Services" \
         "Django   http://localhost:8000" \
         "Mailpit  http://localhost:8025" \
-        "Flower   celery -A config flower --port=5555  →  http://localhost:5555"
+        "Flower   celery -A config flower --port=5555  →  http://localhost:5556 (host port 5556)"
     if [[ ! -f "$WORKSPACE/openapi/schema.yaml" ]]; then
         step "API contract (with the first endpoint)" \
             "bash scripts/schema.sh generate   then commit openapi/schema.yaml"
@@ -84,7 +84,7 @@ elif [[ -f "$WORKSPACE/pyproject.toml" ]]; then
         "bash scripts/init-django.sh"
     step "Hooks, database, server" \
         "pre-commit install" \
-        "python manage.py migrate" \
+        "python manage.py migrate     (Celery Beat starts by itself once the migrations are applied)" \
         "python manage.py runserver 0.0.0.0:8000"
 
 else
@@ -104,7 +104,7 @@ else
     step "5. Git hooks (pre-commit · commit-msg · pre-push)" \
         "pre-commit install"
     step "6. Database and server" \
-        "python manage.py migrate" \
+        "python manage.py migrate     (Celery Beat starts by itself once the migrations are applied)" \
         "python manage.py runserver 0.0.0.0:8000"
     step "7. Freeze the toolchain (once)" \
         "bash scripts/pin-image.sh   pins the dev image to an exact build"

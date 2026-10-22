@@ -6,7 +6,7 @@
 #
 #    app          VS Code attaches here (/workspace = this folder)
 #    celery       worker — waits for manage.py, reloads on code change
-#    celery-beat  scheduler — waits for manage.py
+#    celery-beat  scheduler — waits for manage.py and the migrations
 #    db           PostgreSQL 18
 #    redis        cache + Celery broker/result backend
 #    mailpit      catches outgoing email (UI :8025, SMTP :1025)
@@ -61,6 +61,9 @@ x-dev-image: &dev-image
     EMAIL_PORT: ${EMAIL_PORT:-1025}
     # First connection to github.com needs no manual "yes" prompt.
     GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
+    # Celery Beat idles when DATABASE_URL points at an external database (it would
+    # schedule periodic jobs there); "true" lets it run anyway. Read by start-beat.sh.
+    BEAT_ON_EXTERNAL_DATABASE: ${BEAT_ON_EXTERNAL_DATABASE:-false}
   volumes:
     - .:/workspace:cached
     - venv:/workspace/.venv
@@ -87,7 +90,9 @@ services:
       - shell-history:/home/dev/.shell_history
     ports:
       - "127.0.0.1:8000:8000"   # Django dev server
-      - "127.0.0.1:5555:5555"   # Flower
+      # Flower listens on 5555 in the container; the host port is 5556 because the
+      # Android emulator's adb uses the host's 5555.
+      - "127.0.0.1:5556:5555"   # Flower
       - "127.0.0.1:5678:5678"   # debugpy
 
   celery:
@@ -104,12 +109,11 @@ services:
 
   celery-beat:
     <<: *dev-image
-    command: >
-      sh -c '
-        echo "⏳ Celery Beat waits for manage.py and the project venv (uv sync)…"
-        until [ -f manage.py ] && [ -x .venv/bin/celery ]; do sleep 5; done
-        exec celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
-      '
+    # Waits for manage.py, the project venv and applied migrations (the schedule
+    # lives in the database), then starts on its own. Stays idle when
+    # DATABASE_URL points at an external database, unless
+    # BEAT_ON_EXTERNAL_DATABASE=true — see scripts/start-beat.sh.
+    command: bash scripts/start-beat.sh
 
   db:
     image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
@@ -147,7 +151,7 @@ services:
       retries: 10
 
   mailpit:
-    image: axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
+    image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
     restart: unless-stopped
     ports:
       - "127.0.0.1:8025:8025"   # web UI
