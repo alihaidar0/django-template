@@ -734,7 +734,7 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | `docker.yml` | push to `main`, tags, dispatch | **opt-in** (`PUBLISH_IMAGE`): publishes + scans the production image |
 | `release.yml` | push to `main` and `develop` | template: calendar release on `main`; project: draft releases (`Staging` on `develop`, `v<version>` on `main`) with generated notes |
 | `dockerhub-description.yml` | push to `main` touching `README.md` | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → Docker Hub |
-| `image-contract.yml` | weekly (template only) | template vs dev image: PostgreSQL, Python, image, aliases |
+| `image-contract.yml` | weekly (template only) | template vs dev image: PostgreSQL, Python, image, aliases; the hooks' Node.js pin vs the newest LTS |
 
 ### CI tiers — never fails on a fresh template
 
@@ -879,6 +879,14 @@ moved, the weekly *Image contract* run turns red, and you move on purpose with o
 and digest, and updates `docker/Dockerfile.prod`, `ci.yml` and the README badge; `--check`
 shows the change without making it). It refuses a minor that Django does not list. The generated
 project's mypy uses the interpreter it runs in, so no version is written into `pyproject.toml`.
+
+**Node.js is pinned for the git hooks only.** cspell and markdownlint need it; the app, the dev image
+and the production image have none. `default_language_version` in `.pre-commit-config.yaml` pins one exact LTS
+release, so the dev container, CI and every other machine run the same version. Dependabot cannot bump that
+line: every CI run warns when the pin is not an LTS release or its release line is close to end-of-life, and the
+weekly *Image contract* run of the template fails when a newer LTS exists. To bump, take the newest LTS
+`x.y.z` from [nodejs.org](https://nodejs.org/en/download), edit that one line, run `pre-commit run --all-files`
+and commit it.
 
 Every other pinned version (GitHub Actions, the production image's Python and
 uv, postgres/redis/mailpit, hook revisions) is tracked by Dependabot and

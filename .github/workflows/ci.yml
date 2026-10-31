@@ -188,6 +188,9 @@ jobs:
             echo "::warning title=Dev image is not pinned::Run 'bash scripts/pin-image.sh' to freeze the dev image in docker-compose.yml."
           fi
 
+          # Nudge (never fail) when the hooks' Node.js pin is gone, not an LTS or nearing end-of-life.
+          bash .github/scripts/check-node-pin.sh
+
   pre-commit:
     name: pre-commit
     needs: detect
