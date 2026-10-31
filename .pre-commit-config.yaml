@@ -5,6 +5,16 @@
 #  the Node.js that cspell and markdownlint need, so nothing is installed in the
 #  dev container itself. The first run installs them (a few minutes).
 #
+#  Node.js is pinned to one exact LTS release (default_language_version below),
+#  so the dev container, CI and every other machine run the same version. Without
+#  a pin, pre-commit uses whatever Node.js is on PATH (the CI runner's) or asks
+#  nodeenv for "latest", which can be a pre-release it cannot parse. Dependabot
+#  cannot bump that line: .github/scripts/check-node-pin.sh warns in CI when the
+#  pin nears end-of-life, and the weekly Image contract run fails (template)
+#  when a newer LTS exists. To bump: take the newest LTS x.y.z from
+#  https://nodejs.org/en/download, edit the line below, then run
+#  `pre-commit run --all-files` and commit.
+#
 #  Install once, after `uv init` (all hook types in one go):
 #    pre-commit install
 #
@@ -24,6 +34,8 @@ default_install_hook_types:
   - commit-msg
   - pre-push
 default_stages: [pre-commit]
+default_language_version:
+  node: 26.13.0   # LTS "Lithium", supported until 2029-04-30
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

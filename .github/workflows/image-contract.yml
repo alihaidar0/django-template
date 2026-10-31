@@ -4,8 +4,10 @@
 #  Weekly check that the template still matches what the django-devcontainer
 #  image provides (PostgreSQL and Python versions, the image the compose file
 #  pulls, the documented shell aliases). A red run means one of the two
-#  repositories moved on. It is deliberately not a required check: it depends
-#  on another repository's state.
+#  repositories moved on. It also fails when the Node.js pinned for the git
+#  hooks (.pre-commit-config.yaml) is not the newest LTS release, because
+#  Dependabot cannot bump that line. It is deliberately not a required check:
+#  it depends on other repositories' and nodejs.org's state.
 #
 #  Runs only in the template repository, never in a generated project.
 # ============================================================
@@ -34,3 +36,7 @@ jobs:
 
       - name: Compare with the image's published sources
         run: bash .github/scripts/check-image-contract.sh
+
+      - name: Check the Node.js pin of the git hooks
+        if: ${{ !cancelled() }}
+        run: bash .github/scripts/check-node-pin.sh --strict
