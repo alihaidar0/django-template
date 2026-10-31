@@ -11,7 +11,8 @@
 #     named volumes root-owned).
 #  3. Git hooks: installs pre-commit, commit-msg and pre-push, so the
 #     branch guards and Conventional Commits checks are active from the
-#     very first commit (also on a fresh template).
+#     very first commit (also on a fresh template). Building the hook
+#     environments is best effort: a failed download only warns.
 #  4. Existing project (uv.lock present, e.g. a fresh clone): installs
 #     the locked dependencies — ready to run.
 #     Fresh template: does nothing more; welcome.sh shows the steps.
@@ -46,6 +47,16 @@ fi
 # Hooks do not need the project's venv (pre-commit is a global tool of the image),
 # so they are installed on a fresh template too.
 if [[ -f .pre-commit-config.yaml ]] && git rev-parse --git-dir >/dev/null 2>&1; then
+    # The git hooks themselves (branch guards, Conventional Commits) must exist: fail hard.
     echo "▶ pre-commit install"
-    pre-commit install --install-hooks
+    pre-commit install
+
+    # Building the hook environments downloads tools and the pinned Node.js. A network
+    # hiccup there must not leave the container half-created; the same install is
+    # retried by the first `git commit` (or `pre-commit install-hooks`).
+    echo "▶ pre-commit install-hooks"
+    pre-commit install-hooks || {
+        echo "⚠ Could not build the hook environments (see the error above)."
+        echo "  They are retried on the first commit, or run: pre-commit install-hooks"
+    }
 fi

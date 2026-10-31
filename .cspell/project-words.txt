@@ -65,6 +65,7 @@ allkeys
 gsub
 isready
 keygen
+ltrimstr
 maxmemory
 noinput
 noreload
@@ -72,6 +73,7 @@ publickey
 sshkey
 sslmode
 tolower
+tonumber
 toupper
 PYTHONDONTWRITEBYTECODE
 PYTHONUNBUFFERED

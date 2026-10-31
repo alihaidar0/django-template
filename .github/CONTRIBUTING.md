@@ -89,7 +89,7 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 | [`release.yml`](workflows/release.yml) | push `develop` / `main` | template: publishes `vYYYY.MM.DD` on `main`; project: keeps the draft releases current through [`scripts/release-draft.sh`](../scripts/release-draft.sh): the rolling "Staging" draft on `develop`, the `v<version>` draft on `main`. You publish the latter |
 | [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | **opt-in** (`PUBLISH_IMAGE`): publish the production image to GHCR or Docker Hub; ends green with a notice when unset or until the project is initialised |
 | [`dockerhub-description.yml`](workflows/dockerhub-description.yml) | push `main` touching `README.md`, dispatch | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → the image's Docker Hub page |
-| [`image-contract.yml`](workflows/image-contract.yml) | weekly, dispatch | template only: PostgreSQL / Python versions, image reference and shell aliases vs `django-devcontainer` (not required) |
+| [`image-contract.yml`](workflows/image-contract.yml) | weekly, dispatch | template only: PostgreSQL / Python versions, image reference and shell aliases vs `django-devcontainer`, and the hooks' Node.js pin vs the newest LTS (not required) |
 
 ### CI tiers — never fails on a fresh template
 
@@ -145,6 +145,22 @@ and digest, and updates `docker/Dockerfile.prod`, `ci.yml` and the README badge;
 shows the change without making it). It refuses a minor that Django does not list. The generated
 project's mypy uses the interpreter it runs in, so no version is written into `pyproject.toml`.
 
+### Node.js version (git hooks only)
+
+Node.js exists only for the cspell and markdownlint hooks; the app and its images have none. One exact
+**LTS** release is pinned under `default_language_version` in `.pre-commit-config.yaml`, so the dev container, CI
+and every other machine run the same version. No pin would mean "the Node.js on `PATH`" (the CI runner's) or
+whatever nodeenv resolves as "latest", which can be a pre-release it cannot parse. Dependabot has no ecosystem
+for that line, so [`check-node-pin.sh`](scripts/check-node-pin.sh) watches it against nodejs.org:
+
+- every CI run warns when the pin is not a published LTS release, or its release line is end-of-life or less than
+  90 days from it (a warning, never a failure);
+- the weekly *Image contract* run (template) fails when a newer LTS exists.
+
+To bump: take the newest LTS `x.y.z` from <https://nodejs.org/en/download>, edit the one line, run
+`pre-commit run --all-files`, and commit it as `chore(deps)`. Check that the hooks still support that Node.js
+version first (the engines of cspell and markdownlint-cli2).
+
 ### Workflow hardening (keep it when editing)
 
 - Every action and reusable workflow pinned to a **full commit SHA** with a
@@ -187,9 +203,11 @@ mypy .
 
 `pre-commit run --all-files` also runs the Lint workflow's spell check (cspell), Markdown (markdownlint),
 ShellCheck, workflow (actionlint, zizmor) and Dockerfile (hadolint) checks, with the same configuration files as
-the workflow. pre-commit keeps each tool in its own cache, Node.js for cspell and markdownlint included, so nothing
-is installed in the dev container. The first run installs them and takes a few minutes; a commit afterwards checks
-only the files being committed and takes a moment.
+the workflow. pre-commit keeps each tool in its own cache, Node.js for cspell and markdownlint included (the exact
+LTS release pinned under `default_language_version` in `.pre-commit-config.yaml`), so nothing is installed in the
+dev container. The first run installs them and takes a few minutes; a commit afterwards checks only the files being
+committed and takes a moment. If building them fails while the container is created (no network), `post-create.sh`
+only warns; `pre-commit install-hooks` retries.
 
 What the hooks do not cover:
 
