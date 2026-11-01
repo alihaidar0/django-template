@@ -4,7 +4,7 @@
 #  Checked by the "API style" job of ci.yml (Spectral). Errors fail CI; the
 #  warnings of the recommended ruleset are shown but do not. Run locally from
 #  the repository root:
-#    docker compose -f .github/api-tools/docker-compose.yml run --rm spectral \
+#    docker compose -f tools/api-tools/docker-compose.yml run --rm spectral \
 #      lint openapi/schema.yaml --ruleset .spectral.yaml
 # ============================================================
 extends: ["spectral:oas"]

@@ -104,7 +104,7 @@ jobs are simply not applicable at the current tier.
 
 **API contract jobs** (any tier, opt-in): when `openapi/schema.yaml` exists, `API schema is
 current`, `API style (Spectral)` and `API breaking changes (oasdiff)` also run. They use the
-pinned images in [`api-tools/docker-compose.yml`](api-tools/docker-compose.yml) and no GitHub
+pinned images in [`tools/api-tools/docker-compose.yml`](../tools/api-tools/docker-compose.yml) and no GitHub
 Action, so a missing allowed-actions entry can never fail the workflow. Details:
 [`docs/api-workflow.md`](../docs/api-workflow.md).
 
@@ -183,7 +183,7 @@ cooldown**:
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
 | `docker` | `docker/Dockerfile.prod` — python base (patch updates only: a new minor is moved to with `scripts/set-python.sh`) + uv (tag + digest) |
-| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `api-tools/docker-compose.yml` — oasdiff and Spectral (a separate entry and group; merge stable tags only) once `scripts/pin-image.sh` pinned it (tag + digest) |
+| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `tools/api-tools/docker-compose.yml` — oasdiff and Spectral (a separate entry and group; merge stable tags only) once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled automatically by `scripts/init-django.sh` |
 
