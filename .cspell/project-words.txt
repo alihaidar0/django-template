@@ -25,6 +25,8 @@ usernamehw
 
 # Tools, services, standards
 autonumber
+chainctl
+chainguard
 errorlens
 ghaction
 healthz
