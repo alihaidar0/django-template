@@ -7,7 +7,7 @@
 #   docker-compose  docker-compose.yml — postgres, redis, mailpit (tag + digest) AND
 #                   the dev image: once `bash scripts/pin-image.sh` pinned it to
 #                   python-X.Y.Z.R@sha256:…, new image builds arrive as PRs
-#   docker-compose  .github/api-tools/docker-compose.yml — oasdiff + Spectral images of
+#   docker-compose  tools/api-tools/docker-compose.yml — oasdiff + Spectral images of
 #                   the API-contract CI jobs (its own entry and group, so a failure
 #                   there cannot block the dev-stack updates above)
 #   pre-commit      .pre-commit-config.yaml — hook revs
@@ -67,10 +67,10 @@ updates:
 
   # ── Dev services (postgres, redis, mailpit) ──────────────────────────
   - package-ecosystem: "docker-compose"
-    # The dev stack only. The API-contract CI tools have their own entry below:
-    # one grouped pull request spanning both directories failed at creation with
-    # `dependency_file_not_supported` (400 "invalid or unauthorized changes"),
-    # which stopped every compose update, the dev stack included.
+    # The dev stack only. The API-contract CI tools have their own entry below,
+    # so a failing update there cannot stop the dev-stack updates (one grouped
+    # pull request spanning both directories once failed at creation and blocked
+    # every compose update).
     directory: "/"
     schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
     cooldown: { default-days: 7 }
@@ -94,11 +94,14 @@ updates:
     open-pull-requests-limit: 5
 
   # ── API-contract CI tools (oasdiff, Spectral) ────────────────────────
-  # Pinned images in .github/api-tools/docker-compose.yml, kept in a separate
-  # entry and group from the dev stack (see the note above). oasdiff also
-  # publishes release candidates (v1.x.y-rc.N): merge stable tags only.
+  # Pinned images in tools/api-tools/docker-compose.yml, kept in a separate
+  # entry and group from the dev stack (see the note above). The file lives in
+  # tools/, not under .github/: while it was in .github/api-tools, every pull
+  # request Dependabot built for it failed with `dependency_file_not_supported`
+  # (HTTP 400 "invalid or unauthorized changes"). oasdiff also publishes
+  # release candidates (v1.x.y-rc.N): merge stable tags only.
   - package-ecosystem: "docker-compose"
-    directory: "/.github/api-tools"
+    directory: "/tools/api-tools"
     schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
     cooldown: { default-days: 7 }
     target-branch: "develop"

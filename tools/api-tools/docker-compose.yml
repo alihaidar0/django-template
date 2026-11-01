@@ -1,5 +1,5 @@
 # ============================================================
-#  .github/api-tools/docker-compose.yml
+#  tools/api-tools/docker-compose.yml
 #
 #  The two tools of the API-contract CI jobs (ci.yml), as pinned containers:
 #    oasdiff   breaking-change check and changelog between two OpenAPI files
@@ -12,20 +12,21 @@
 #  fail CI itself in every project that has no API yet. No Node.js, and nothing
 #  added to the dev image.
 #
-#  Dependabot (docker-compose ecosystem, directory /.github/api-tools) bumps the
-#  tags and digests. The oasdiff project also publishes release candidates
-#  (v1.x.y-rc.N): merge only stable tags.
+#  Dependabot (docker-compose ecosystem, directory /tools/api-tools) bumps the
+#  tags and digests. Keep this file outside .github/: Dependabot's pull requests
+#  for it failed there with a 400 (dependency_file_not_supported). The oasdiff
+#  project also publishes release candidates (v1.x.y-rc.N): merge only stable tags.
 #
 #  Run from the repository root, for example:
-#    docker compose -f .github/api-tools/docker-compose.yml run --rm spectral \
+#    docker compose -f tools/api-tools/docker-compose.yml run --rm spectral \
 #      lint openapi/schema.yaml --ruleset .spectral.yaml
-#    docker compose -f .github/api-tools/docker-compose.yml run --rm oasdiff \
+#    docker compose -f tools/api-tools/docker-compose.yml run --rm oasdiff \
 #      breaking /path/to/old.yaml openapi/schema.yaml
 # ============================================================
 
 services:
   oasdiff:
-    image: tufin/oasdiff:v1.33.0@sha256:6263a96dd2ef0726c54e21fea9b8e1607eac4841add0079324b424c1f52b819c
+    image: tufin/oasdiff:v1.34.1@sha256:67a23cfea7d251e2ae34ee703ac8733c5d96bc2e7b90fd0f4d475ec99367b85f
     working_dir: /w
     volumes:
       - ../..:/w:ro

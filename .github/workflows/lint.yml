@@ -60,7 +60,7 @@ jobs:
       - name: docker compose config
         run: |
           docker compose config --quiet && echo "✅ docker-compose.yml is valid"
-          docker compose -f .github/api-tools/docker-compose.yml config --quiet && echo "✅ .github/api-tools/docker-compose.yml is valid"
+          docker compose -f tools/api-tools/docker-compose.yml config --quiet && echo "✅ tools/api-tools/docker-compose.yml is valid"
 
       - name: cspell
         uses: streetsidesoftware/cspell-action@ce1816e4ce36532956ac6e983737392774b6e169 # v9.2.0
