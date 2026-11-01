@@ -183,7 +183,7 @@ cooldown**:
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
 | `docker` | `docker/Dockerfile.prod` — python base (patch updates only: a new minor is moved to with `scripts/set-python.sh`) + uv (tag + digest) |
-| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `api-tools/docker-compose.yml` — oasdiff and Spectral (merge stable tags only) once `scripts/pin-image.sh` pinned it (tag + digest) |
+| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `api-tools/docker-compose.yml` — oasdiff and Spectral (a separate entry and group; merge stable tags only) once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled automatically by `scripts/init-django.sh` |
 
