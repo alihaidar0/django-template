@@ -76,10 +76,10 @@ bash scripts/schema.sh generate      # write openapi/schema.yaml from the code
 bash scripts/schema.sh check         # fail if the committed file is out of date
 
 # the two CI tools run as pinned containers, nothing to install
-docker compose -f .github/api-tools/docker-compose.yml run --rm spectral \
+docker compose -f tools/api-tools/docker-compose.yml run --rm spectral \
   lint openapi/schema.yaml --ruleset .spectral.yaml
 git show origin/develop:openapi/schema.yaml > /tmp/base.yaml
-docker compose -f .github/api-tools/docker-compose.yml run --rm -v /tmp:/base:ro oasdiff \
+docker compose -f tools/api-tools/docker-compose.yml run --rm -v /tmp:/base:ro oasdiff \
   changelog /base/base.yaml openapi/schema.yaml --format markdown
 ```
 

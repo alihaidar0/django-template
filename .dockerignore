@@ -18,6 +18,7 @@
 .dockerignore
 docker-compose*.yml
 docker/
+tools/
 .pre-commit-config.yaml
 .hadolint.yaml
 .markdownlint-cli2.jsonc

@@ -444,7 +444,7 @@ jobs:
   # on a fresh template, the template guard in a generated project) count as
   # passed.
   # ── API contract: opt-in, runs only once openapi/schema.yaml exists ──────
-  # The tools run as pinned containers (.github/api-tools/docker-compose.yml),
+  # The tools run as pinned containers (tools/api-tools/docker-compose.yml),
   # not as GitHub Actions: GitHub checks every action a workflow references
   # against the allowed-actions list at startup, even in skipped jobs, so a
   # missing entry would fail this whole workflow in every project without an API.
@@ -487,7 +487,7 @@ jobs:
       - name: Lint openapi/schema.yaml
         run: |
           [ -f .spectral.yaml ] || { echo "::error::.spectral.yaml is missing; restore it from the template."; exit 1; }
-          docker compose -f .github/api-tools/docker-compose.yml run --rm -T spectral \
+          docker compose -f tools/api-tools/docker-compose.yml run --rm -T spectral \
             lint openapi/schema.yaml --ruleset .spectral.yaml --fail-severity error
 
   # Compares the schema on the pull request's base commit with the PR's schema.
@@ -532,7 +532,7 @@ jobs:
             exit 0
           fi
 
-          oasdiff=(docker compose -f .github/api-tools/docker-compose.yml run --rm -T oasdiff)
+          oasdiff=(docker compose -f tools/api-tools/docker-compose.yml run --rm -T oasdiff)
 
           { echo "## API changelog (base → this pull request)"; echo; "${oasdiff[@]}" changelog base/openapi/schema.yaml openapi/schema.yaml --format markdown; } >> "$GITHUB_STEP_SUMMARY" || true
 

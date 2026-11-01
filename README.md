@@ -751,7 +751,7 @@ simply don't apply to the current tier.
 (`bash scripts/schema.sh generate`), three more jobs run and feed the same gate: *API schema
 is current*, *API style* (Spectral, rules in `.spectral.yaml`) and *API breaking changes*
 (oasdiff against the pull request's base; a breaking change needs the `breaking change` label).
-They use pinned containers from `.github/api-tools/docker-compose.yml`, not GitHub Actions,
+They use pinned containers from `tools/api-tools/docker-compose.yml`, not GitHub Actions,
 so nothing changes in the allowed-actions list. Workflow and conventions:
 [`docs/api-workflow.md`](https://github.com/alihaidar0/django-template/blob/main/docs/api-workflow.md),
 [`docs/api-conventions.md`](https://github.com/alihaidar0/django-template/blob/main/docs/api-conventions.md). Every action is pinned to a full commit
@@ -823,7 +823,7 @@ Weekly (Monday 09:00 UTC), grouped, 7-day cooldown, every pull request into
 | --- | --- |
 | `github-actions` | workflow action SHAs (incl. the reusable builder) |
 | `docker` | `docker/Dockerfile.prod` — python base (**patch updates only**, see [section 8](#8-versions-the-template-follows-the-newest-projects-freeze)) + uv (tag + digest) |
-| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `.github/api-tools/docker-compose.yml` — the oasdiff and Spectral images once `scripts/pin-image.sh` pinned it (tag + digest) |
+| `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `tools/api-tools/docker-compose.yml` — the oasdiff and Spectral images once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled by `scripts/init-django.sh` |
 
@@ -958,7 +958,6 @@ Celery containers; on your host the `.venv` folder stays empty.
 │   │   ├── docker.yml                # publish + scan the production image
 │   │   ├── dockerhub-description.yml # README → Docker Hub
 │   │   └── image-contract.yml        # template only: weekly check against the dev image
-│   ├── api-tools/docker-compose.yml  # pinned oasdiff + Spectral images for the API-contract CI jobs
 │   ├── rulesets/                     # importable rulesets: protect-main · protect-develop · protect-tags
 │   ├── scripts/                      # check-image-contract.sh
 │   ├── ISSUE_TEMPLATE/ · CODEOWNERS · CODE_OF_CONDUCT.md · CONTRIBUTING.md · SECURITY.md · pull_request_template.md
@@ -966,6 +965,7 @@ Celery containers; on your host the `.venv` folder stays empty.
 ├── .vscode/launch.json · tasks.json  # debug configs + task shortcuts
 ├── docs/                             # github-setup.md · api-workflow.md · api-collaboration.md · consuming-the-api.md · api-conventions.md
 ├── .spectral.yaml                    # API style rules (Spectral)
+├── tools/api-tools/                  # pinned oasdiff + Spectral images for the API-contract CI jobs
 ├── docker/Dockerfile.prod            # production image
 ├── scripts/
 │   ├── init-django.sh                # step 4: scaffold config/ + settings + Celery + tool config
