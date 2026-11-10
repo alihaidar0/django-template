@@ -90,7 +90,8 @@ repos:
   # files (cspell.json, .markdownlint-cli2.jsonc, .hadolint.yaml, .github/actionlint.yaml, .github/zizmor.yml).
   # Not here: `docker compose config` (needs Docker, which the dev container does not have) and the online audits
   # of zizmor (they need a GitHub token), so a green commit is not a promise that Lint passes: CI stays the gate.
-  # The revs are pinned separately from the tools bundled in the workflow's actions, so versions can differ slightly.
+  # actionlint and zizmor run at these revs in the Lint workflow too (check-tool-pins.sh compares them); hadolint,
+  # cspell and markdownlint are bundled with their pinned actions there, so those versions can differ slightly.
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v10.4.0
     hooks:

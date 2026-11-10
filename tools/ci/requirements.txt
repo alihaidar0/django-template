@@ -1,0 +1,17 @@
+# ============================================================
+#  tools/ci/requirements.txt — the Python CLIs the CI workflows run with uvx
+#
+#  Passed to uvx as a constraint (uvx -c tools/ci/requirements.txt <tool>), so
+#  CI runs these exact versions instead of whatever PyPI published last, and a
+#  new release can never fail CI on a day nothing in the repository changed.
+#  Dependabot (pip ecosystem, directory /tools/ci) proposes updates weekly,
+#  after the 7-day cooldown, like every other pin. Kept under tools/, next to
+#  tools/api-tools, rather than under .github/ (see the header of
+#  tools/api-tools/docker-compose.yml for why).
+# ============================================================
+
+# Runs the hooks of .pre-commit-config.yaml (the pre-commit and commit-message jobs)
+pre-commit==4.7.0
+
+# Audits the locked dependencies (the pip-audit job)
+pip-audit==2.10.1

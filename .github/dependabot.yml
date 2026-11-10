@@ -11,6 +11,8 @@
 #                   the API-contract CI jobs (its own entry and group, so a failure
 #                   there cannot block the dev-stack updates above)
 #   pre-commit      .pre-commit-config.yaml — hook revs
+#   pip             tools/ci/requirements.txt — the CLIs CI runs with uvx (pre-commit,
+#                   pip-audit)
 #   uv              pyproject.toml + uv.lock — enabled by scripts/init-django.sh
 #                   (block at the end; commented here so the template itself,
 #                   which has no pyproject.toml, doesn't fail every week)
@@ -126,6 +128,22 @@ updates:
     labels: ["dependencies", "pre-commit"]
     groups:
       pre-commit-hooks-all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  # ── CLIs the CI workflows run with uvx (pre-commit, pip-audit) ───────
+  # Pinned in tools/ci/requirements.txt and passed to uvx as a constraint, so a new
+  # release reaches CI through a reviewed pull request, never unannounced.
+  - package-ecosystem: "pip"
+    directory: "/tools/ci"
+    schedule: { interval: "weekly", day: "monday", time: "09:00", timezone: "UTC" }
+    cooldown: { default-days: 7 }
+    target-branch: "develop"
+    assignees: ["alihaidar0"]
+    commit-message: { prefix: "ci", include: "scope" }
+    labels: ["dependencies", "python"]
+    groups:
+      ci-tools-all:
         patterns: ["*"]
     open-pull-requests-limit: 3
 

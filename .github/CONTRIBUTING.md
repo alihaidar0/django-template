@@ -81,7 +81,7 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 
 | Workflow | Triggers | What |
 | --- | --- | --- |
-| [`ci.yml`](workflows/ci.yml) → **`CI passed`** (required) | PR → `develop` / `main` | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs (below) |
+| [`ci.yml`](workflows/ci.yml) → **`CI passed`** (required) | PR → `develop` / `main`; weekly on `develop` (Monday 06:37 UTC) | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs (below); a failed weekly run opens the issue *Weekly CI run failed* |
 | [`lint.yml`](workflows/lint.yml) | called by `ci.yml`, dispatch | hadolint · ShellCheck · actionlint · zizmor · `docker compose config` · cspell · markdownlint |
 | [`pr-labels.yml`](workflows/pr-labels.yml) | PR opened / edited | labels from the Conventional Commit title (drive the release notes) |
 | [`labels.yml`](workflows/labels.yml) | push `develop` / `main` touching labels, PR validation, dispatch | `.github/labels.yml` → GitHub labels (`gh` CLI); removes GitHub's five default labels; a manual run with `prune` removes every label not in the file |
@@ -89,7 +89,7 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 | [`release.yml`](workflows/release.yml) | push `develop` / `main` | template: publishes `vYYYY.MM.DD` on `main`; project: keeps the draft releases current through [`scripts/release-draft.sh`](../scripts/release-draft.sh): the rolling "Staging" draft on `develop`, the `v<version>` draft on `main`. You publish the latter |
 | [`docker.yml`](workflows/docker.yml) → **Docker** | push `main` (release), tags `v*.*.*`, dispatch | **opt-in** (`PUBLISH_IMAGE`): publish the production image to GHCR or Docker Hub; ends green with a notice when unset or until the project is initialised |
 | [`dockerhub-description.yml`](workflows/dockerhub-description.yml) | push `main` touching `README.md`, dispatch | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → the image's Docker Hub page |
-| [`image-contract.yml`](workflows/image-contract.yml) | weekly, dispatch | template only: PostgreSQL / Python versions, image reference and shell aliases vs `django-devcontainer`, and the hooks' Node.js pin vs the newest LTS (not required) |
+| [`image-contract.yml`](workflows/image-contract.yml) | weekly (Monday 07:13 UTC), dispatch | template only: PostgreSQL / Python versions, image reference and shell aliases vs `django-devcontainer`, and the hooks' Node.js pin vs the newest LTS (not required) |
 
 ### CI tiers — never fails on a fresh template
 
@@ -97,10 +97,16 @@ setting is listed in [`docs/github-setup.md`](../docs/github-setup.md).
 | --- | --- | --- |
 | 1 · template | no `pyproject.toml` | `pre-commit` · `Production image` (scaffolds a sample project with the documented steps, checks it with ruff · mypy strict · pytest · migrations · deploy check, then builds it and probes `/healthz` + the CSP header) |
 | 2 · pre-Django | `pyproject.toml` | `pre-commit` · `pip-audit` |
-| 3 · Django | `manage.py` + `uv.lock` | `pre-commit` · `mypy` · `pytest` (PostgreSQL 18 service) · `Django deploy check` (+ missing migrations) · `pip-audit` · `Production image` |
+| 3 · Django | `manage.py` + `uv.lock` | `pre-commit` · `mypy` · `pytest` (PostgreSQL 18 service) · `Django deploy check` (+ missing migrations) · `pip-audit` · `Production image` (with a Trivy report) |
 
 The `CI passed` gate job passes when every applicable job passed — skipped
 jobs are simply not applicable at the current tier.
+
+**Weekly run:** every Monday CI also runs on `develop` without a pull request. A new upstream release
+that breaks the documented setup, or a newly published vulnerability in the locked dependencies
+(pip-audit) or in the production image (Trivy: on a pull request it only reports, here a CRITICAL
+finding with a fix fails the run), shows up within a week instead of on an unrelated pull request.
+A failed weekly run opens or updates the issue *Weekly CI run failed* (label `bug`).
 
 **API contract jobs** (any tier, opt-in): when `openapi/schema.yaml` exists, `API schema is
 current`, `API style (Spectral)` and `API breaking changes (oasdiff)` also run. They use the
@@ -185,6 +191,7 @@ cooldown**:
 | `docker` | `docker/Dockerfile.prod` — python base (patch updates only: a new minor is moved to with `scripts/set-python.sh`) + uv (tag + digest) |
 | `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `tools/api-tools/docker-compose.yml` — oasdiff and Spectral (a separate entry and group; merge stable tags only) once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
+| `pip` | `tools/ci/requirements.txt` — the CLIs CI runs with `uvx` (pre-commit, pip-audit) |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled automatically by `scripts/init-django.sh` |
 
 Every label Dependabot applies exists in [`labels.yml`](labels.yml).
@@ -214,7 +221,10 @@ What the hooks do not cover:
 - `docker compose config` stays CI-only: the dev container has no Docker (run it from a machine with Docker, below).
 - zizmor runs with `--offline` locally, because its online audits need a GitHub token, so CI can report more than
   the hook.
-- The hook revisions are pinned separately from the tools bundled in the workflow's actions, so versions can differ
+- actionlint and zizmor run at the hooks' versions in the Lint workflow too: [`check-tool-pins.sh`](scripts/check-tool-pins.sh)
+  warns in CI and fails the weekly *Image contract* run (template) when they differ, so bump `version:` in
+  `lint.yml` in the same pull request as a Dependabot hook bump. hadolint, cspell and markdownlint are bundled
+  with their pinned actions, so those versions can differ
   slightly. The Lint workflow stays the gate.
 - pre-commit refuses to run when `.pre-commit-config.yaml` has unstaged changes ("Your pre-commit configuration is
   unstaged"): commit a change to that file first.
