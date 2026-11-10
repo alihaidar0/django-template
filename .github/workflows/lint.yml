@@ -10,6 +10,11 @@
 #    ShellCheck      scripts/*.sh and .github/scripts/*.sh (preinstalled on the runner)
 #    actionlint      .github/workflows/* (config: .github/actionlint.yaml)
 #    zizmor          GitHub Actions security audit (injection, permissions, pinning)
+#
+#    actionlint and zizmor run at the version of their git hook, set with each
+#    action's `version:` input: without it the actions download the newest
+#    release, which can fail this job on a day nothing here changed.
+#    .github/scripts/check-tool-pins.sh compares the two on every CI run.
 #    compose config  docker-compose.yml is valid and interpolates
 #    cspell          docs, configs, scripts — not Python (config: cspell.json)
 #    markdownlint    every Markdown file (config: .markdownlint-cli2.jsonc)
@@ -46,10 +51,15 @@ jobs:
 
       - name: actionlint
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          # Same as the actionlint-py hook rev in .pre-commit-config.yaml.
+          version: 1.7.12
 
       - name: zizmor
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
+          # Same as the zizmor-pre-commit hook rev in .pre-commit-config.yaml.
+          version: 1.31.1
           inputs: .github/
           persona: regular
           # Fail the job with inline annotations instead of uploading SARIF

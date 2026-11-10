@@ -357,7 +357,7 @@ a description and these topics: `django`, `python`, `uv`, `docker`,
 | Actions permissions | Allow `<your user>`, and select non-`<your user>`, actions and reusable workflows |
 | Allow actions created by GitHub | On |
 | Allow Marketplace actions by verified creators | Off |
-| Allowed actions (one per line) | `astral-sh/setup-uv@*`, `hadolint/hadolint-action@*`, `raven-actions/actionlint@*`, `zizmorcore/zizmor-action@*`, `streetsidesoftware/cspell-action@*`, `DavidAnson/markdownlint-cli2-action@*`, `docker/*`, `aws-actions/configure-aws-credentials@*`, `azure/login@*`, `chainguard-dev/setup-chainctl@*` and `google-github-actions/auth@*` (never run here: they sit in optional registry-login steps inside Docker's reusable builder, and GitHub checks every action a called workflow references, so without them `docker.yml` fails at startup even when publishing is off), `aquasecurity/trivy-action@*`, `codecov/codecov-action@*`, `peter-evans/dockerhub-description@*`, `github/codeql-action/*`, `dependabot/fetch-metadata@*` (only if you enable the optional auto-merge) |
+| Allowed actions (one per line) | `astral-sh/setup-uv@*`, `hadolint/hadolint-action@*`, `raven-actions/actionlint@*`, `zizmorcore/zizmor-action@*`, `streetsidesoftware/cspell-action@*`, `DavidAnson/markdownlint-cli2-action@*`, `docker/*`, `aws-actions/configure-aws-credentials@*`, `azure/login@*`, `chainguard-dev/setup-chainctl@*` and `google-github-actions/auth@*` (never run here: they sit in optional registry-login steps inside Docker's reusable builder, and GitHub checks every action a called workflow references, so without them `docker.yml` fails at startup even when publishing is off), `aquasecurity/trivy-action@*` and `aquasecurity/setup-trivy@*` (trivy-action calls it internally, so without it every Trivy step is refused at startup), `codecov/codecov-action@*`, `peter-evans/dockerhub-description@*`, `github/codeql-action/*`, `dependabot/fetch-metadata@*` (only if you enable the optional auto-merge) |
 | Require actions to be pinned to a full-length commit SHA | **On** |
 | Artifact and log retention | 30 days |
 | Fork pull request workflows from outside collaborators | Require approval for all external contributors |
@@ -377,6 +377,7 @@ explicitly:
 | `labels.yml` | `issues: write` | create the labels |
 | `pr-labels.yml` | `pull-requests: write` | add labels from the PR title |
 | `docker.yml` | `id-token: write`, `security-events: write` | keyless signing; upload the scan |
+| `ci.yml`, `image-contract.yml` | `issues: write` (one job each) | open or update the issue when a weekly run fails |
 
 Workflows run on an explicit runner image (`ubuntu-26.04`) rather than
 `ubuntu-latest`. GitHub moves `ubuntu-latest` on its own schedule, which
@@ -395,7 +396,7 @@ variables → Actions → Variables):
 | --- | --- | --- |
 | *(unset — the default)* | nothing is published; `docker.yml` ends green with a notice | nothing |
 | `ghcr` | the image goes to GitHub Container Registry, `ghcr.io/<owner>/<repo>` | nothing: it signs in with the automatic token. Set the package visibility under the repository's *Packages* if you want it public |
-| `dockerhub` | the image goes to `docker.io/<DOCKERHUB_USERNAME>/<repo>`, and the README is synced to the Docker Hub page | variable `DOCKERHUB_USERNAME` (your namespace) and secret `DOCKERHUB_TOKEN` (an access token, Read & Write) |
+| `dockerhub` | the image goes to `docker.io/<DOCKERHUB_USERNAME>/<repo>`, and the README is synced to the Docker Hub page | variable `DOCKERHUB_USERNAME` (your namespace) and secret `DOCKERHUB_TOKEN` (an access token with Read, Write & Delete: the README sync needs Delete) |
 
 Any other value fails the run on purpose, so a typo is noticed. A different
 registry or host: replace the `publish` job in `docker.yml` and add the
@@ -405,7 +406,7 @@ project's own deployment workflow; the template assumes neither.
 | --- | --- | --- |
 | Variable | `PUBLISH_IMAGE` | `ghcr` or `dockerhub` — leave it unset to publish nothing |
 | Variable (Docker Hub only) | `DOCKERHUB_USERNAME` | your Docker Hub namespace (not secret) |
-| Secret (Docker Hub only) | `DOCKERHUB_TOKEN` | a Docker Hub access token (Read & Write) |
+| Secret (Docker Hub only) | `DOCKERHUB_TOKEN` | a Docker Hub access token with **Read, Write & Delete** (pushing needs Read & Write; syncing the README to the Docker Hub page with `dockerhub-description.yml` also needs Delete) |
 | Secret (optional) | `CODECOV_TOKEN` | enables the coverage upload |
 
 The workflow also waits until the project has `manage.py` + `uv.lock`.
@@ -726,7 +727,7 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 
 | Workflow | Runs on | What |
 | --- | --- | --- |
-| `ci.yml` → **CI passed** (required) | pull requests into `develop` and `main` | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs |
+| `ci.yml` → **CI passed** (required) | pull requests into `develop` and `main`; weekly on `develop` (Monday 06:37 UTC) | source branch · Lint · commit messages · pre-commit · template guard · tiered project jobs; a failed weekly run opens the issue *Weekly CI run failed* |
 | `lint.yml` | called by `ci.yml` | hadolint · ShellCheck · actionlint · zizmor · `docker compose config` · cspell · markdownlint |
 | `pr-labels.yml` | pull request opened/edited | labels from the Conventional Commit title |
 | `labels.yml` | push to `develop`/`main` touching `labels.yml` | labels as code (`gh`); removes GitHub's five default labels; a manual run with `prune` removes every label not in the file |
@@ -734,7 +735,7 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | `docker.yml` | push to `main`, tags, dispatch | **opt-in** (`PUBLISH_IMAGE`): publishes + scans the production image |
 | `release.yml` | push to `main` and `develop` | template: calendar release on `main`; project: draft releases (`Staging` on `develop`, `v<version>` on `main`) with generated notes |
 | `dockerhub-description.yml` | push to `main` touching `README.md` | **opt-in** (`PUBLISH_IMAGE=dockerhub`): README → Docker Hub |
-| `image-contract.yml` | weekly (template only) | template vs dev image: PostgreSQL, Python, image, aliases; the hooks' Node.js pin vs the newest LTS |
+| `image-contract.yml` | weekly, Monday 07:13 UTC (template only) | template vs dev image: PostgreSQL, Python, image, aliases; the hooks' Node.js pin vs the newest LTS; a failure opens an issue |
 
 ### CI tiers — never fails on a fresh template
 
@@ -742,10 +743,16 @@ Hook versions are bumped weekly by Dependabot. Run all hooks with
 | --- | --- | --- |
 | 1 · template | no `pyproject.toml` | a sample project scaffolded with the quickstart steps, checked (ruff · mypy strict · pytest · migrations · deploy check) and served from the production image |
 | 2 · pre-Django | `pyproject.toml` | pip-audit |
-| 3 · Django | `manage.py` + `uv.lock` | mypy · pytest (PostgreSQL 18) · `check --deploy` · missing-migrations check · pip-audit · production image build + smoke test (`/healthz`, CSP header) |
+| 3 · Django | `manage.py` + `uv.lock` | mypy · pytest (PostgreSQL 18) · `check --deploy` · missing-migrations check · pip-audit · production image build + smoke test (`/healthz`, CSP header) + Trivy report |
 
 The single **CI passed** gate job is the required check; jobs skipped by design
 simply don't apply to the current tier.
+
+**Weekly run:** every Monday CI also runs on `develop` without a pull request. A new upstream release
+that breaks the documented setup, or a newly published vulnerability in the locked dependencies
+(pip-audit) or in the production image (Trivy: on a pull request it only reports, here a CRITICAL
+finding with a fix fails the run), shows up within a week instead of on an unrelated pull request.
+A failed weekly run opens or updates the issue *Weekly CI run failed* (label `bug`).
 
 **API contract (opt-in, any tier):** once a project commits `openapi/schema.yaml`
 (`bash scripts/schema.sh generate`), three more jobs run and feed the same gate: *API schema
@@ -825,6 +832,7 @@ Weekly (Monday 09:00 UTC), grouped, 7-day cooldown, every pull request into
 | `docker` | `docker/Dockerfile.prod` — python base (**patch updates only**, see [section 8](#8-versions-the-template-follows-the-newest-projects-freeze)) + uv (tag + digest) |
 | `docker-compose` | `docker-compose.yml` — postgres, redis, mailpit **and the dev image**; `tools/api-tools/docker-compose.yml` — the oasdiff and Spectral images once `scripts/pin-image.sh` pinned it (tag + digest) |
 | `pre-commit` | `.pre-commit-config.yaml` hook revs |
+| `pip` | `tools/ci/requirements.txt` — the CLIs CI runs with `uvx` (pre-commit, pip-audit) |
 | `uv` | `pyproject.toml` + `uv.lock` — enabled by `scripts/init-django.sh` |
 
 Review them once a week, merge what you need, then promote with one
