@@ -75,7 +75,7 @@ a description and these topics: `django`, `python`, `uv`, `docker`,
 | Actions permissions | Allow `<your user>`, and select non-`<your user>`, actions and reusable workflows |
 | Allow actions created by GitHub | On |
 | Allow Marketplace actions by verified creators | Off |
-| Allowed actions (one per line) | `astral-sh/setup-uv@*`, `hadolint/hadolint-action@*`, `raven-actions/actionlint@*`, `zizmorcore/zizmor-action@*`, `streetsidesoftware/cspell-action@*`, `DavidAnson/markdownlint-cli2-action@*`, `docker/*`, `aws-actions/configure-aws-credentials@*`, `azure/login@*`, `chainguard-dev/setup-chainctl@*` and `google-github-actions/auth@*` (never run here: they sit in optional registry-login steps inside Docker's reusable builder, and GitHub checks every action a called workflow references, so without them `docker.yml` fails at startup even when publishing is off), `aquasecurity/trivy-action@*`, `codecov/codecov-action@*`, `peter-evans/dockerhub-description@*`, `github/codeql-action/*`, `dependabot/fetch-metadata@*` (only if you enable the optional auto-merge) |
+| Allowed actions (one per line) | `astral-sh/setup-uv@*`, `hadolint/hadolint-action@*`, `raven-actions/actionlint@*`, `zizmorcore/zizmor-action@*`, `streetsidesoftware/cspell-action@*`, `DavidAnson/markdownlint-cli2-action@*`, `docker/*`, `aws-actions/configure-aws-credentials@*`, `azure/login@*`, `chainguard-dev/setup-chainctl@*` and `google-github-actions/auth@*` (never run here: they sit in optional registry-login steps inside Docker's reusable builder, and GitHub checks every action a called workflow references, so without them `docker.yml` fails at startup even when publishing is off), `aquasecurity/trivy-action@*` and `aquasecurity/setup-trivy@*` (trivy-action calls it internally, so without it every Trivy step is refused at startup), `codecov/codecov-action@*`, `peter-evans/dockerhub-description@*`, `github/codeql-action/*`, `dependabot/fetch-metadata@*` (only if you enable the optional auto-merge) |
 | Require actions to be pinned to a full-length commit SHA | **On** |
 | Artifact and log retention | 30 days |
 | Fork pull request workflows from outside collaborators | Require approval for all external contributors |
@@ -95,6 +95,7 @@ explicitly:
 | `labels.yml` | `issues: write` | create the labels |
 | `pr-labels.yml` | `pull-requests: write` | add labels from the PR title |
 | `docker.yml` | `id-token: write`, `packages: write`, `security-events: write` | keyless signing; push to ghcr.io (only when `PUBLISH_IMAGE=ghcr`); upload the scan |
+| `ci.yml`, `image-contract.yml` | `issues: write` (one job each) | open or update the issue when a weekly run fails |
 
 Workflows run on an explicit runner image (`ubuntu-26.04`) rather than
 `ubuntu-latest`. GitHub moves `ubuntu-latest` on its own schedule, which
@@ -113,7 +114,7 @@ variables → Actions → Variables):
 | --- | --- | --- |
 | *(unset — the default)* | nothing is published; `docker.yml` ends green with a notice | nothing |
 | `ghcr` | the image goes to GitHub Container Registry, `ghcr.io/<owner>/<repo>` | nothing: it signs in with the automatic token. Set the package visibility under the repository's *Packages* if you want it public |
-| `dockerhub` | the image goes to `docker.io/<DOCKERHUB_USERNAME>/<repo>`, and the README is synced to the Docker Hub page | variable `DOCKERHUB_USERNAME` (your namespace) and secret `DOCKERHUB_TOKEN` (an access token, Read & Write) |
+| `dockerhub` | the image goes to `docker.io/<DOCKERHUB_USERNAME>/<repo>`, and the README is synced to the Docker Hub page | variable `DOCKERHUB_USERNAME` (your namespace) and secret `DOCKERHUB_TOKEN` (an access token with Read, Write & Delete: the README sync needs Delete) |
 
 Any other value fails the run on purpose, so a typo is noticed. A different
 registry or host: replace the `publish` job in `docker.yml` and add the
@@ -123,7 +124,7 @@ project's own deployment workflow; the template assumes neither.
 | --- | --- | --- |
 | Variable | `PUBLISH_IMAGE` | `ghcr` or `dockerhub` — leave it unset to publish nothing |
 | Variable (Docker Hub only) | `DOCKERHUB_USERNAME` | your Docker Hub namespace (not secret) |
-| Secret (Docker Hub only) | `DOCKERHUB_TOKEN` | a Docker Hub access token (Read & Write) |
+| Secret (Docker Hub only) | `DOCKERHUB_TOKEN` | a Docker Hub access token with **Read, Write & Delete** (pushing needs Read & Write; syncing the README to the Docker Hub page with `dockerhub-description.yml` also needs Delete) |
 | Secret (optional) | `CODECOV_TOKEN` | enables the coverage upload |
 
 The workflow also waits until the project has `manage.py` + `uv.lock`.
@@ -363,7 +364,8 @@ Once a week **Image contract** (template repository only) compares the
 template with the `django-devcontainer` image: the PostgreSQL and Python
 versions, the image the compose file pulls and the documented shell aliases. A
 red run means one of the two repositories moved on; fix it with a topic branch
-like any other change.
+like any other change. A failed scheduled run also opens or updates the issue
+*Weekly image contract check failed*, so it cannot go unnoticed.
 
 ## 9. Optional: auto-merge Dependabot patch updates (not enabled)
 

@@ -59,7 +59,7 @@ repos:
         args: [--branch, main, --branch, develop]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.2
+    rev: v0.17.3
     hooks:
       - id: ruff-check
         args: [--fix, --output-format=full]
@@ -75,13 +75,13 @@ repos:
 
   # Keeps uv.lock in sync whenever pyproject.toml changes.
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.13.5
+    rev: 0.13.7
     hooks:
       - id: uv-lock
 
   # Schema-validates the workflow and Dependabot files before they reach CI.
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.38.2
+    rev: 0.39.0
     hooks:
       - id: check-github-workflows
       - id: check-dependabot
@@ -90,7 +90,8 @@ repos:
   # files (cspell.json, .markdownlint-cli2.jsonc, .hadolint.yaml, .github/actionlint.yaml, .github/zizmor.yml).
   # Not here: `docker compose config` (needs Docker, which the dev container does not have) and the online audits
   # of zizmor (they need a GitHub token), so a green commit is not a promise that Lint passes: CI stays the gate.
-  # The revs are pinned separately from the tools bundled in the workflow's actions, so versions can differ slightly.
+  # actionlint and zizmor run at these revs in the Lint workflow too (check-tool-pins.sh compares them); hadolint,
+  # cspell and markdownlint are bundled with their pinned actions there, so those versions can differ slightly.
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v10.4.0
     hooks:
@@ -112,7 +113,7 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.31.1
+    rev: v1.32.0
     hooks:
       - id: zizmor
         args: [--persona=regular, --offline, --no-progress]
@@ -123,7 +124,7 @@ repos:
       - id: hadolint
 
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.4.0
+    rev: v4.5.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]

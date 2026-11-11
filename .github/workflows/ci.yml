@@ -28,6 +28,14 @@
 #  Branch model: topic branch ─PR─▶ develop ─PR─▶ main. Nobody pushes to
 #  develop or main. CI runs on every pull request into either branch, so the
 #  required "CI passed" check is on the PR's head commit.
+#
+#  Weekly run (Monday 06:37 UTC, on the default branch `develop`): the same
+#  checks without a pull request, so a new upstream release that breaks the
+#  documented setup (tier 1 scaffolds with the newest packages), a newly
+#  published vulnerability in the locked dependencies (pip-audit) or in the
+#  production image (Trivy) shows up within a week instead of on the next,
+#  unrelated pull request. A failed weekly run opens or updates the issue
+#  "Weekly CI run failed".
 # ============================================================
 
 name: CI
@@ -36,6 +44,9 @@ on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    # Off the top of the hour, when GitHub delays or drops scheduled runs.
+    - cron: "37 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -95,7 +106,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
@@ -111,7 +122,7 @@ jobs:
           msg="$RUNNER_TEMP/commit-msg.txt"
           while read -r sha; do
             git log -1 --format=%B "$sha" > "$msg"
-            if ! uvx pre-commit run conventional-pre-commit --hook-stage commit-msg --commit-msg-filename "$msg" > "$RUNNER_TEMP/out.txt" 2>&1; then
+            if ! uvx -c tools/ci/requirements.txt pre-commit run conventional-pre-commit --hook-stage commit-msg --commit-msg-filename "$msg" > "$RUNNER_TEMP/out.txt" 2>&1; then
               echo "::error::Commit ${sha:0:7} does not follow Conventional Commits: $(head -n 1 "$msg")"
               cat "$RUNNER_TEMP/out.txt"
               status=1
@@ -191,6 +202,9 @@ jobs:
           # Nudge (never fail) when the hooks' Node.js pin is gone, not an LTS or nearing end-of-life.
           bash .github/scripts/check-node-pin.sh
 
+          # Nudge (never fail) when lint.yml runs another actionlint or zizmor than the git hooks.
+          bash .github/scripts/check-tool-pins.sh
+
   pre-commit:
     name: pre-commit
     needs: detect
@@ -203,7 +217,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
@@ -223,7 +237,7 @@ jobs:
       - name: Run all hooks
         env:
           SKIP: no-commit-to-branch,block-protected-push
-        run: uvx pre-commit run --all-files --show-diff-on-failure --color=always
+        run: uvx -c tools/ci/requirements.txt pre-commit run --all-files --show-diff-on-failure --color=always
 
   typecheck:
     name: mypy
@@ -237,7 +251,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
       - name: Install dependencies
@@ -274,7 +288,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
       - name: Install dependencies
@@ -315,7 +329,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
       - name: Install dependencies
@@ -339,7 +353,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
@@ -350,7 +364,7 @@ jobs:
         run: |
           flag=""; [ "$LOCKED" = "true" ] && flag="--locked"
           uv export $flag --no-emit-project --no-hashes --format requirements-txt -o /tmp/requirements.txt
-          uvx pip-audit --disable-pip --no-deps --strict -r /tmp/requirements.txt
+          uvx -c tools/ci/requirements.txt pip-audit --disable-pip --no-deps --strict -r /tmp/requirements.txt
 
   prod-image:
     name: Production image
@@ -368,7 +382,7 @@ jobs:
 
       - name: Set up uv
         if: env.TIER == '1'
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           # No uv.lock / pyproject.toml to key a cache on in a fresh template, and
@@ -439,6 +453,20 @@ jobs:
           echo "✅ /admin/login/ → 200 with a Content-Security-Policy header"
           docker exec app whoami | grep -qx app && echo "✅ runs as non-root user app (1001)"
 
+      # OS packages and locked Python dependencies of the production image. A pull
+      # request only reports them (exit code 0): a CVE published in the base image
+      # must not fail an unrelated change. The weekly run fails on a CRITICAL
+      # finding that has a fix, which opens the tracking issue; the fix is usually
+      # the pending Dependabot pull request for the python base image or uv.lock.
+      - name: Vulnerability report (CRITICAL with a fix)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: project:ci
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: ${{ github.event_name == 'schedule' && '1' || '0' }}
+
   # The one check to require in branch protection. It always runs and fails if
   # any job above failed or was cancelled; jobs skipped by design (a Django job
   # on a fresh template, the template guard in a generated project) count as
@@ -461,7 +489,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 
@@ -587,3 +615,34 @@ jobs:
             exit 1
           fi
           echo "✅ CI passed: yes"
+
+  # A scheduled run has no pull request and no author to notify, so a failure would
+  # only show as a red run in the Actions tab. Keep one open issue instead; each new
+  # failure comments on it. Close it once a weekly run is green again.
+  report-failure:
+    name: Report a failed weekly run
+    needs: ci-passed
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write   # open the tracking issue, or comment on it
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "Weekly CI run failed"
+        run: |
+          body="The weekly CI run failed: ${RUN_URL}"
+          body="${body}"$'\n\n'"Open the run, fix the cause on a topic branch (or merge the pending Dependabot pull request that fixes it), then close this issue."
+          number="$(gh issue list --state open --label bug --limit 100 \
+            --json number,title --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+            echo "Commented on issue #$number" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh issue create --title "$TITLE" --label bug --body "$body"
+            echo "Opened the tracking issue" >> "$GITHUB_STEP_SUMMARY"
+          fi
