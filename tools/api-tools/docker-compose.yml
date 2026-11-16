@@ -26,13 +26,13 @@
 
 services:
   oasdiff:
-    image: tufin/oasdiff:v1.35.0@sha256:82b1840a77335562bb11ce95f77ad31745a0c6f3a770929333ed1c5ef466e400
+    image: tufin/oasdiff:v1.37.0@sha256:ff02af37a254b5199b9d72e7bba93dae5837a9119d59459168d1398893b47aea
     working_dir: /w
     volumes:
       - ../..:/w:ro
 
   spectral:
-    image: stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239
+    image: stoplight/spectral:6.17.1@sha256:3b05e6cd9d43375c454cc0c022e91b3285851043b05c3e738342ea3f84cde76d
     working_dir: /w
     volumes:
       - ../..:/w:ro
