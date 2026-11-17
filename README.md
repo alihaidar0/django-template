@@ -4,7 +4,7 @@
 > Click **Use this template**, open in VS Code, **Reopen in Container**, start coding.
 
 [![CI](https://github.com/alihaidar0/django-template/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/alihaidar0/django-template/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.15-blue?logo=python&logoColor=white)](https://www.python.org)
 [![Django](https://img.shields.io/badge/django-6.x-green?logo=django&logoColor=white)](https://www.djangoproject.com)
 [![uv](https://img.shields.io/badge/uv-package%20manager-blueviolet)](https://docs.astral.sh/uv/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://docs.astral.sh/ruff/)
@@ -862,7 +862,7 @@ The image has three kinds of tags:
 | `python-3.14.8.1` (`python-X.Y.Z.R`) | **never** | one exact image: Python `X.Y.Z`, image revision `R` |
 
 The image stays on the newest Python minor that Django supports (Django 6.1:
-Python 3.12–3.14). `pin-image.sh` stays on the Python line of your container;
+Python 3.12–3.15). `pin-image.sh` stays on the Python line of your container;
 moving to a new minor is deliberate: `bash scripts/pin-image.sh python-X.Y.Z.R`.
 Dependabot follows the image to every newer build — minor and major too — as its
 own pull request; read the image's release notes before merging a new Python
@@ -878,9 +878,9 @@ Flower, IPython) come from your `uv.lock`; run anything else ad hoc with
 
 **Python follows Django.** The production image (and CI) run the newest Python minor that
 Django officially supports, read from the version classifiers Django publishes on PyPI: not the
-newest Python released (Django 6.1 lists 3.12–3.14, so 3.15 is not used yet). The dev image
+newest Python released (Django 6.1 lists 3.12–3.15; a newer minor is not used until Django lists it). The dev image
 follows the same rule. Dependabot therefore proposes only Python **patch** updates
-(`3.14.8` → `3.14.9`) for `docker/Dockerfile.prod`; a new minor, or a release candidate of one,
+(`3.15.1` → `3.15.2`) for `docker/Dockerfile.prod`; a new minor, or a release candidate of one,
 never arrives as a pull request. When Django adds support for a newer minor and the dev image has
 moved, the weekly *Image contract* run turns red, and you move on purpose with one command:
 `bash scripts/set-python.sh` (it picks the newest minor Django supports, resolves the image tag
