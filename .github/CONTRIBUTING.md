@@ -141,9 +141,9 @@ that each project takes on its own; the draft releases need none of it.
 
 **Python follows Django.** The production image (and CI) run the newest Python minor that
 Django officially supports, read from the version classifiers Django publishes on PyPI: not the
-newest Python released (Django 6.1 lists 3.12–3.14, so 3.15 is not used yet). The dev image
+newest Python released (Django 6.1 lists 3.12–3.15; a newer minor is not used until Django lists it). The dev image
 follows the same rule. Dependabot therefore proposes only Python **patch** updates
-(`3.14.8` → `3.14.9`) for `docker/Dockerfile.prod`; a new minor, or a release candidate of one,
+(`3.15.1` → `3.15.2`) for `docker/Dockerfile.prod`; a new minor, or a release candidate of one,
 never arrives as a pull request. When Django adds support for a newer minor and the dev image has
 moved, the weekly *Image contract* run turns red, and you move on purpose with one command:
 `bash scripts/set-python.sh` (it picks the newest minor Django supports, resolves the image tag
