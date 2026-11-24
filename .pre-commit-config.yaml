@@ -59,7 +59,7 @@ repos:
         args: [--branch, main, --branch, develop]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.4
+    rev: v0.17.5
     hooks:
       - id: ruff-check
         args: [--fix, --output-format=full]
@@ -75,7 +75,7 @@ repos:
 
   # Keeps uv.lock in sync whenever pyproject.toml changes.
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.13.7
+    rev: 0.13.8
     hooks:
       - id: uv-lock
 
@@ -93,12 +93,12 @@ repos:
   # actionlint and zizmor run at these revs in the Lint workflow too (check-tool-pins.sh compares them); hadolint,
   # cspell and markdownlint are bundled with their pinned actions there, so those versions can differ slightly.
   - repo: https://github.com/streetsidesoftware/cspell-cli
-    rev: v10.4.0
+    rev: v10.4.1
     hooks:
       - id: cspell
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.24.0
+    rev: v0.24.1
     hooks:
       - id: markdownlint-cli2
 
