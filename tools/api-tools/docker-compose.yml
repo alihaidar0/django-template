@@ -26,7 +26,7 @@
 
 services:
   oasdiff:
-    image: tufin/oasdiff:v1.37.0@sha256:ff02af37a254b5199b9d72e7bba93dae5837a9119d59459168d1398893b47aea
+    image: tufin/oasdiff:v1.38.0@sha256:d8e4cfbd36234af05c0d48f679005bace2a0253a93e5064158b720bf24ec4bd6
     working_dir: /w
     volumes:
       - ../..:/w:ro
